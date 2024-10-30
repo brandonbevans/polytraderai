@@ -1,29 +1,38 @@
 import asyncio
 import operator
-from typing import Annotated, TypedDict
+from typing import Annotated
 from langchain_core.agents import AgentAction
 from langchain_core.messages import BaseMessage
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.tools import tool
 from langchain_openai import ChatOpenAI
 from langgraph.graph import END, StateGraph
+from langgraph.graph.state import CompiledStateGraph
+from langgraph_sdk.schema import Thread
 from serpapi import GoogleSearch
 import os
 from data_fetchers import fetch_active_markets
 from models import Market
-
+from pydantic import BaseModel, validator
 from langgraph_sdk import get_client
+import json
 
 
 # Define the state
-class AgentState(TypedDict):
-    market: Market  # Changed from input: str
+class AgentState(BaseModel):
+    market: Market
     chat_history: list[BaseMessage]
-    intermediate_steps: Annotated[list[tuple[AgentAction, str]], operator.add]
+    intermediate_steps: Annotated[list[tuple[AgentAction, str]], operator.add] = []
+
+    @validator("intermediate_steps")
+    def validate_steps(cls, v):
+        if isinstance(v, list):
+            return [item if isinstance(item, tuple) else (item, item.log) for item in v]
+        return v
 
 
 @tool("web_search")
-def web_search(query: str):
+def web_search(query: str) -> str:
     """Finds general knowledge information using Google search."""
     search = GoogleSearch(
         {"engine": "google", "api_key": os.getenv("SERPAPI_KEY"), "q": query, "num": 5}
@@ -36,25 +45,51 @@ def web_search(query: str):
 
 
 @tool("final_answer")
-def final_answer(
-    introduction: str,
-    research_steps: str,
-    main_body: str,
-    conclusion: str,
-    sources: str,
-):
-    """Returns a market analysis report with the following sections:
-    - `introduction`: Brief overview of the market question and current odds
-    - `research_steps`: Bullet points explaining research methodology
-    - `main_body`: 3-4 paragraphs analyzing market probability
-    - `conclusion`: Final probability assessment and recommendation
-    - `sources`: Bulletpoint list of sources used
+def final_answer(report: str) -> str:
+    """Returns a market analysis report. The report should be formatted as:
+    {
+        "introduction": "Brief overview of the market question and current odds",
+        "research_steps": ["Step 1", "Step 2", ...],
+        "main_body": "3-4 paragraphs analyzing market probability",
+        "conclusion": "Final probability assessment and recommendation",
+        "sources": ["Source 1", "Source 2", ...]
+    }
     """
-    if type(research_steps) is list:
-        research_steps = "\n".join([f"- {r}" for r in research_steps])
-    if type(sources) is list:
-        sources = "\n".join([f"- {s}" for s in sources])
-    return f"{introduction}\n\nResearch Steps:\n{research_steps}\n\n{main_body}\n\n{conclusion}\n\nSources:\n{sources}"
+    try:
+        if isinstance(report, str):
+            report_dict = json.loads(report)
+        else:
+            report_dict = report
+
+        introduction = report_dict.get("introduction", "")
+        research_steps = report_dict.get("research_steps", [])
+        main_body = report_dict.get("main_body", "")
+        conclusion = report_dict.get("conclusion", "")
+        sources = report_dict.get("sources", [])
+
+        research_steps_str = "\n".join([f"- {r}" for r in research_steps])
+        sources_str = "\n".join([f"- {s}" for s in sources])
+
+        return f"""
+Market Analysis Report
+---------------------
+
+{introduction}
+
+Research Steps:
+{research_steps_str}
+
+Analysis:
+{main_body}
+
+Conclusion:
+{conclusion}
+
+Sources:
+{sources_str}
+"""
+    except json.JSONDecodeError:
+        return f"Error: Could not parse report format. Received: {report}"
 
 
 system_prompt = """You are a market analysis AI that evaluates prediction markets.
@@ -77,7 +112,15 @@ Use the available tools to gather information, but:
 - Limit each tool to maximum 3 uses
 - Gather from diverse sources before concluding
 
-When ready, use final_answer to provide a detailed market analysis."""
+When ready, use final_answer to provide a detailed market analysis in the following format:
+{
+    "introduction": "Brief overview of the market and current odds",
+    "research_steps": ["List of research steps taken"],
+    "main_body": "Detailed analysis of findings",
+    "conclusion": "Final probability assessment",
+    "sources": ["List of sources used"]
+}
+"""
 
 prompt = ChatPromptTemplate.from_messages(
     [
@@ -103,24 +146,21 @@ Volume: {market.volume}
 """
 
 
-def create_scratchpad(intermediate_steps: list[AgentAction]):
+def create_scratchpad(intermediate_steps: list[tuple[AgentAction, str]]):
     research_steps = []
-    for action in intermediate_steps:
-        if action.log != "TBD":
+    for action, output in intermediate_steps:
+        if output != "TBD":
             research_steps.append(
-                f"Tool: {action.tool}, input: {action.tool_input}\n"
-                f"Output: {action.log}"
+                f"Tool: {action.tool}, input: {action.tool_input}\n" f"Output: {output}"
             )
     return "\n---\n".join(research_steps)
 
 
 oracle = (
     {
-        "market_details": lambda x: format_market_details(x["market"]),
-        "chat_history": lambda x: x["chat_history"],
-        "scratchpad": lambda x: create_scratchpad(
-            intermediate_steps=x["intermediate_steps"]
-        ),
+        "market_details": lambda x: format_market_details(x.market),
+        "chat_history": lambda x: x.chat_history,
+        "scratchpad": lambda x: create_scratchpad(x.intermediate_steps),
     }
     | prompt
     | llm.bind_tools(tools, tool_choice="any")
@@ -131,13 +171,19 @@ def run_oracle(state: AgentState):
     out = oracle.invoke(state)
     tool_name = out.tool_calls[0]["name"]
     tool_args = out.tool_calls[0]["args"]
-    action_out = AgentAction(tool=tool_name, tool_input=tool_args, log="TBD")
-    return {"intermediate_steps": [action_out]}
+    action = AgentAction(tool=tool_name, tool_input=tool_args, log="TBD")
+
+    return AgentState(
+        market=state.market,
+        chat_history=state.chat_history,
+        intermediate_steps=[(action, "TBD")],
+    )
 
 
 def router(state: AgentState):
-    if isinstance(state["intermediate_steps"], list):
-        return state["intermediate_steps"][-1].tool
+    if state.intermediate_steps:
+        action, _ = state.intermediate_steps[-1]  # Properly unpack the tuple
+        return action.tool
     return "final_answer"
 
 
@@ -148,11 +194,30 @@ tool_str_to_func = {
 
 
 def run_tool(state: AgentState):
-    tool_name = state["intermediate_steps"][-1].tool
-    tool_args = state["intermediate_steps"][-1].tool_input
-    out = tool_str_to_func[tool_name](**tool_args)
-    action_out = AgentAction(tool=tool_name, tool_input=tool_args, log=str(out))
-    return {"intermediate_steps": [action_out]}
+    last_action, _ = state.intermediate_steps[-1]
+    tool_name = last_action.tool
+    tool_args = last_action.tool_input
+
+    # Extract the single argument value from the args dictionary
+    if isinstance(tool_args, dict):
+        if tool_name == "web_search":
+            arg_value = tool_args.get("query", "")
+        elif tool_name == "final_answer":
+            arg_value = json.dumps(tool_args)  # Convert dict to JSON string
+        else:
+            arg_value = next(iter(tool_args.values()), "")
+    else:
+        arg_value = tool_args
+
+    # Call the tool with a single argument
+    out = tool_str_to_func[tool_name](arg_value)
+    action = AgentAction(tool=tool_name, tool_input=tool_args, log=str(out))
+
+    return AgentState(
+        market=state.market,
+        chat_history=state.chat_history,
+        intermediate_steps=[(action, str(out))],
+    )
 
 
 # Build the graph
@@ -171,28 +236,25 @@ for tool_obj in tools:
 
 builder.add_edge("final_answer", END)
 
-graph = builder.compile()
+graph: CompiledStateGraph = builder.compile()
 
 
 async def main():
-    URL = "http://localhost:63320"
+    URL = "http://localhost:50860"
     client = get_client(url=URL)
-    thread = await client.threads.create()
+
+    thread: Thread = await client.threads.create()
 
     market = fetch_active_markets()[0]  # Get first active market
-    input = {"market": market, "chat_history": [], "intermediate_steps": []}
+    initial_state = AgentState(market=market, chat_history=[], intermediate_steps=[])
+
     run = await client.runs.create(
-        thread_id=thread.id,
-        graph_id=graph.id,
-        inputs=input,
+        thread_id=thread["thread_id"],
+        assistant_id="research_agent",
+        input=initial_state.model_dump(),  # Convert to dict for JSON serialization
     )
     print(run)
 
 
 if __name__ == "__main__":
     asyncio.run(main())
-    # with client.
-    # market = fetch_active_markets()[0]  # Get first active market
-    # result = graph.invoke(
-    #     {"market": market, "chat_history": [], "intermediate_steps": []}
-    # )
