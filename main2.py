@@ -1,8 +1,5 @@
 import asyncio
-import operator
 from langgraph_sdk import get_client
-from pydantic import BaseModel, Field
-from typing import Annotated, List
 from data_fetchers import fetch_active_markets
 from langgraph_sdk.schema import Thread
 
@@ -17,98 +14,22 @@ from langchain_core.messages import (
 from langchain_openai import ChatOpenAI
 
 from langgraph.constants import Send
-from langgraph.graph import END, MessagesState, START, StateGraph
+from langgraph.graph import END, START, StateGraph
 
-from models import Market
+from models import (
+    Market,
+    GenerateAnalystsState,
+    InterviewState,
+    Perspectives,
+    ResearchGraphState,
+    SearchQuery,
+    TraderState,
+)
+from trade_tools import trade_execution
 
 ### LLM
 
 llm = ChatOpenAI(model="gpt-4o", temperature=0)
-
-### Schema
-
-
-class Analyst(BaseModel):
-    affiliation: str = Field(
-        description="Primary affiliation of the analyst.",
-    )
-    name: str = Field(description="Name of the analyst.")
-    role: str = Field(
-        description="Role of the analyst in the context of the topic.",
-    )
-    description: str = Field(
-        description="Description of the analyst focus, concerns, and motives.",
-    )
-
-    @property
-    def persona(self) -> str:
-        return f"Name: {self.name}\nRole: {self.role}\nAffiliation: {self.affiliation}\nDescription: {self.description}\n"
-
-
-class Perspectives(BaseModel):
-    analysts: List[Analyst] = Field(
-        description="Comprehensive list of analysts with their roles and affiliations.",
-    )
-
-
-class Recommendation(BaseModel):
-    recommendation: str = Field(
-        description="Recommendation on whether to buy one of the outcomes, or do nothing.",
-        default="",
-    )
-    conviction: int = Field(
-        description="Conviction score for the recommendation, between 0 and 100.",
-        default=0,
-        ge=0,
-        le=100,
-    )
-
-
-class TraderState(BaseModel):
-    recommendation: Recommendation
-    market: Market
-
-
-class GenerateAnalystsState(BaseModel):
-    """State for generating analysts"""
-
-    market: Market
-    max_analysts: int
-    analysts: List[Analyst] = Field(default_factory=list)  # Default empty list
-
-    class Config:
-        arbitrary_types_allowed = True  # Allow Market type
-
-
-class InterviewState(MessagesState):
-    max_num_turns: int  # Number turns of conversation
-    context: Annotated[list, operator.add]  # Source docs
-    analyst: Analyst  # Analyst asking questions
-    interview: str  # Interview transcript
-    sections: list  # Final key we duplicate in outer state for Send() API
-
-
-class SearchQuery(BaseModel):
-    search_query: str = Field(None, description="Search query for retrieval.")
-
-
-class ResearchGraphState(BaseModel):
-    """State for the overall research graph"""
-
-    market: Market
-    max_analysts: int
-    analysts: List[Analyst] = Field(default_factory=list)
-    sections: Annotated[List[str], operator.add] = Field(default_factory=list)
-    introduction: str = ""
-    content: str = ""
-    conclusion: str = ""
-    final_report: str = ""
-    recommendation: Recommendation = Field(
-        default_factory=lambda: Recommendation(recommendation="", conviction=0)
-    )
-
-    class Config:
-        arbitrary_types_allowed = True  # Allow Market type
 
 
 ### Nodes and edges
@@ -466,46 +387,6 @@ def initiate_all_interviews(state: ResearchGraphState):
     ]
 
 
-# Write a report based on the interviews
-report_writer_instructions = """You are an expert market analyst creating a comprehensive report on this prediction market:
-
-Market Question: {market.question}
-Description: {market.description}
-Current Odds: {market_odds}
-End Date: {market.end_date}
-Volume: {market.volume}
-    
-You have a team of analysts. Each analyst has done two things: 
-
-1. They conducted an interview with an expert on a specific prediction market.
-2. They write up their findings into a memo.
-
-Your task: 
-
-1. You will be given a collection of memos from your analysts.
-2. Think carefully about the insights from each memo.
-3. Consolidate these into a crisp overall summary that ties together the central ideas from all of the memos. 
-4. Summarize the central points in each memo into a cohesive single narrative that helps evaluate the market probabilities.
-5. Based on all of the memos, provide a final probability assessment for the market outcomes. 
-6. Most importantly, based on the provided odds and make a recommendation on whether to buy one of the outcomes, or do nothing.
-
-
-To format your report:
- 
-1. Use markdown formatting. 
-2. Include no pre-amble for the report.
-3. Use no sub-heading. 
-4. Start your report with a single title header: ## Market Analysis
-5. Do not mention any analyst names in your report.
-6. Preserve any citations in the memos, which will be annotated in brackets, for example [1] or [2].
-7. Create a final, consolidated list of sources and add to a Sources section with the `## Sources` header.
-8. List your sources in order and do not repeat.
-9. End with a clear probability assessment for the market outcomes.
-
-Here are the memos from your analysts to build your report from: 
-
-{context}"""
-
 recommendation_instructions = """You are an expert market analyst creating a comprehensive report on this prediction market:
 
 Market Question: {market.question}
@@ -531,28 +412,6 @@ Here are the memos from your analysts to build your report from:
 """
 
 
-# def write_report(state: ResearchGraphState):
-#     """Node to write the final report body"""
-
-#     # Full set of sections
-#     sections = state.sections
-#     market = state.market
-#     market_odds = format_market_odds(market)
-
-#     # Concat all sections together
-#     formatted_str_sections = "\n\n".join([f"{section}" for section in sections])
-
-#     # Summarize the sections into a final report
-#     system_message = report_writer_instructions.format(
-#         market=market, market_odds=market_odds, context=formatted_str_sections
-#     )
-#     report = llm.invoke(
-#         [SystemMessage(content=system_message)]
-#         + [HumanMessage(content="Write a report based upon these memos.")]
-#     )
-#     return {"content": report.content}
-
-
 def write_recommendation(state: ResearchGraphState):
     """Node to write the recommendation"""
 
@@ -568,7 +427,7 @@ def write_recommendation(state: ResearchGraphState):
     system_message = recommendation_instructions.format(
         market=market, market_odds=market_odds, context=formatted_str_sections
     )
-    recommendation = llm.with_structured_output(Recommendation).invoke(
+    recommendation = llm.with_structured_output(TraderState).invoke(
         [SystemMessage(content=system_message)]
         + [HumanMessage(content="Create a recommendation based upon these memos.")]
     )
@@ -577,128 +436,48 @@ def write_recommendation(state: ResearchGraphState):
     return {"recommendation": recommendation}
 
 
-# Write the introduction or conclusion
-intro_conclusion_instructions = """You are a market analyst finishing a report on this prediction market:
+trader_instructions = """You are an expert market analyst tasked with executing a trade based on a recommendation.
+Here is the market data: {market}
+Here is a recommendation: {recommendation}
 
-Market Question: {market.question}
-Description: {market.description}
-Current Odds: {market_odds}
-End Date: {market.end_date}
-Volume: {market.volume}
-
-You will be given all of the sections of the report.
-
-You job is to write a crisp and compelling introduction or conclusion section.
-
-The user will instruct you whether to write the introduction or conclusion.
-
-Include no pre-amble for either section.
-
-Target around 100 words, crisply previewing (for introduction) or recapping (for conclusion) all of the sections of the report.
-
-Use markdown formatting. 
-
-For your introduction, create a compelling title and use the # header for the title.
-
-For your introduction, use ## Introduction as the section header. 
-
-For your conclusion, use ## Conclusion as the section header and include a final probability assessment.
-
-Here are the sections to reflect on for writing: {formatted_str_sections}"""
+Your task is to execute the trade based on the recommendation.
+Use the provided trade_execution tool to execute the trade, you'll need to format the trade details as an OrderDetails object."""
 
 
-def write_introduction(state: ResearchGraphState):
-    """Node to write the introduction"""
+def trader_execution(state: TraderState):
+    """Node to execute the trader's recommendation"""
 
-    # Full set of sections
-    sections = state.sections
     market = state.market
-    market_odds = format_market_odds(market)
+    recommendation = state.recommendation
 
-    # Concat all sections together
-    formatted_str_sections = "\n\n".join([f"{section}" for section in sections])
-
-    # Write introduction
-    instructions = intro_conclusion_instructions.format(
-        market=market,
-        market_odds=market_odds,
-        formatted_str_sections=formatted_str_sections,
+    llm_trader = llm.bind_tools([trade_execution])
+    trade = llm_trader.invoke(
+        [
+            SystemMessage(
+                content=trader_instructions.format(
+                    market=market, recommendation=recommendation
+                )
+            )
+        ]
+        + [HumanMessage(content="Execute the trade.")]
     )
-    intro = llm.invoke(
-        [instructions] + [HumanMessage(content="Write the report introduction")]
-    )
-    return {"introduction": intro.content}
-
-
-def write_conclusion(state: ResearchGraphState):
-    """Node to write the conclusion"""
-
-    # Full set of sections
-    sections = state.sections
-    market = state.market
-    market_odds = format_market_odds(market)
-
-    # Concat all sections together
-    formatted_str_sections = "\n\n".join([f"{section}" for section in sections])
-
-    # Write conclusion
-    instructions = intro_conclusion_instructions.format(
-        market=market,
-        market_odds=market_odds,
-        formatted_str_sections=formatted_str_sections,
-    )
-    conclusion = llm.invoke(
-        [instructions] + [HumanMessage(content="Write the report conclusion")]
-    )
-    return {"conclusion": conclusion.content}
-
-
-def finalize_report(state: ResearchGraphState):
-    """The is the "reduce" step where we gather all the sections, combine them, and reflect on them to write the intro/conclusion"""
-
-    # Save full final report
-    content = state.content
-    if content.startswith("## Insights"):
-        content = content.strip("## Insights")
-    if "## Sources" in content:
-        try:
-            content, sources = content.split("\n## Sources\n")
-        except:
-            sources = None
-    else:
-        sources = None
-
-    final_report = (
-        state.introduction + "\n\n---\n\n" + content + "\n\n---\n\n" + state.conclusion
-    )
-    if sources is not None:
-        final_report += "\n\n## Sources\n" + sources
-    return {"final_report": final_report}
+    return {"trade": trade}
 
 
 # Add nodes and edges
 builder = StateGraph(ResearchGraphState)
 builder.add_node("create_analysts", create_analysts)
 builder.add_node("conduct_interview", interview_builder.compile())
-# builder.add_node("write_report", write_report)
-# builder.add_node("write_introduction", write_introduction)
-# builder.add_node("write_conclusion", write_conclusion)
 builder.add_node("write_recommendation", write_recommendation)
-# builder.add_node("finalize_report", finalize_report)
 
 # Logic
 builder.add_edge(START, "create_analysts")
 builder.add_conditional_edges(
     "create_analysts", initiate_all_interviews, ["conduct_interview"]
 )
-# builder.add_edge("conduct_interview", "write_report")
-# builder.add_edge("conduct_interview", "write_introduction")
-# builder.add_edge("conduct_interview", "write_conclusion")
-# builder.add_edge(
-#     ["write_conclusion", "write_report", "write_introduction"], "finalize_report"
-# )
 builder.add_edge("conduct_interview", "write_recommendation")
 builder.add_edge("write_recommendation", END)
+
 
 # Compile
 graph = builder.compile()

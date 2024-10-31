@@ -1,7 +1,10 @@
 from pydantic import BaseModel, Field, validator
-from typing import List, Union
+from typing import List, Optional, Union
 from datetime import datetime
 import json
+from langgraph.graph import MessagesState
+import operator
+from typing import Annotated
 
 
 class Event(BaseModel):
@@ -82,3 +85,173 @@ class MarketList(BaseModel):
 
 class Prediction(BaseModel):
     market: Market
+
+
+class Analyst(BaseModel):
+    affiliation: str = Field(
+        description="Primary affiliation of the analyst.",
+    )
+    name: str = Field(description="Name of the analyst.")
+    role: str = Field(
+        description="Role of the analyst in the context of the topic.",
+    )
+    description: str = Field(
+        description="Description of the analyst focus, concerns, and motives.",
+    )
+
+    @property
+    def persona(self) -> str:
+        return f"Name: {self.name}\nRole: {self.role}\nAffiliation: {self.affiliation}\nDescription: {self.description}\n"
+
+
+class Perspectives(BaseModel):
+    analysts: List[Analyst] = Field(
+        description="Comprehensive list of analysts with their roles and affiliations.",
+    )
+
+
+class Recommendation(BaseModel):
+    recommendation: str = Field(
+        description="Recommendation on whether to buy one of the outcomes, or do nothing.",
+        default="",
+    )
+    conviction: int = Field(
+        description="Conviction score for the recommendation, between 0 and 100.",
+        default=0,
+        ge=0,
+        le=100,
+    )
+
+
+class TraderState(BaseModel):
+    recommendation: Recommendation
+    market: Market
+
+
+class GenerateAnalystsState(BaseModel):
+    """State for generating analysts"""
+
+    market: Market
+    max_analysts: int
+    analysts: List[Analyst] = Field(default_factory=list)  # Default empty list
+
+    class Config:
+        arbitrary_types_allowed = True  # Allow Market type
+
+
+class InterviewState(MessagesState):
+    max_num_turns: int  # Number turns of conversation
+    context: Annotated[list, operator.add]  # Source docs
+    analyst: Analyst  # Analyst asking questions
+    interview: str  # Interview transcript
+    sections: list  # Final key we duplicate in outer state for Send() API
+
+
+class SearchQuery(BaseModel):
+    search_query: str = Field(None, description="Search query for retrieval.")
+
+
+class ResearchGraphState(BaseModel):
+    """State for the overall research graph"""
+
+    market: Market
+    max_analysts: int
+    analysts: List[Analyst] = Field(default_factory=list)
+    sections: Annotated[List[str], operator.add] = Field(default_factory=list)
+    introduction: str = ""
+    content: str = ""
+    conclusion: str = ""
+    final_report: str = ""
+    recommendation: Recommendation = Field(
+        default_factory=lambda: Recommendation(recommendation="", conviction=0)
+    )
+
+    class Config:
+        arbitrary_types_allowed = True  # Allow Market type
+
+
+class OrderDetails(BaseModel):
+    """Model for order details required by Polymarket CLOB"""
+
+    token_id: str = Field(description="The token ID for the outcome being traded")
+    price: float = Field(
+        description="The price at which to execute the trade", gt=0, le=1
+    )
+    size: float = Field(description="The size of the order in USD", gt=0)
+    side: str = Field(description="The side of the trade (BUY or SELL)")
+    expiration: str = Field(
+        description="Order expiration timestamp in Unix milliseconds",
+        default="100000000000",  # Default to far future
+    )
+    order_type: str = Field(
+        description="Type of order (GTC, GTD, or IOC)", default="GTC"
+    )
+    salt: str = Field(description="Unique identifier for the order", default="")
+    maker: str = Field(description="Address of the order maker", default="")
+
+    @validator("side")
+    def validate_side(cls, v):
+        if v.upper() not in ["BUY", "SELL"]:
+            raise ValueError("side must be either BUY or SELL")
+        return v.upper()
+
+    @validator("order_type")
+    def validate_order_type(cls, v):
+        if v.upper() not in ["GTC", "GTD", "IOC"]:
+            raise ValueError("order_type must be GTC, GTD, or IOC")
+        return v.upper()
+
+
+class TradeState(BaseModel):
+    """Complete state for trade execution"""
+
+    market: Market
+    recommendation: Recommendation
+    order_details: Optional[OrderDetails] = None
+    balance: float = Field(description="Available balance for trading", default=0.0)
+    max_position_size: float = Field(
+        description="Maximum allowed position size in USD", default=100.0
+    )
+    min_conviction: int = Field(
+        description="Minimum conviction required to execute trade",
+        default=40,
+        ge=0,
+        le=100,
+    )
+
+    class Config:
+        arbitrary_types_allowed = True
+
+    @validator("order_details", pre=True, always=True)
+    def set_order_details(cls, v, values):
+        """Automatically generate order details from market and recommendation if not provided"""
+        if v is None and "market" in values and "recommendation" in values:
+            market = values["market"]
+            recommendation = values["recommendation"]
+
+            # Parse recommendation
+            rec_lower = recommendation.recommendation.lower()
+            if "buy yes" in rec_lower:
+                side, outcome_index = "BUY", 0
+            elif "buy no" in rec_lower:
+                side, outcome_index = "BUY", 1
+            elif "sell yes" in rec_lower:
+                side, outcome_index = "SELL", 0
+            elif "sell no" in rec_lower:
+                side, outcome_index = "SELL", 1
+            else:
+                raise ValueError("Invalid recommendation format")
+
+            # Calculate size based on conviction
+            size = min(
+                100.0 * (recommendation.conviction / 100),
+                values.get("max_position_size", 100.0),
+            )
+
+            return OrderDetails(
+                token_id=market.clob_token_ids[outcome_index],
+                price=market.outcome_prices[outcome_index],
+                size=size,
+                side=side,
+            )
+        return v
