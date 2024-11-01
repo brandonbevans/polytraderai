@@ -1,4 +1,5 @@
 import sqlite3
+import time
 import uuid
 from langgraph_sdk import get_client
 from data_fetchers import fetch_active_markets
@@ -574,11 +575,14 @@ async def main():
 
 def run_in_sdk(thread_id: str):
     config = {"configurable": {"thread_id": thread_id}}
-    market = fetch_active_markets()[0]  # Get first active market
-    initial_state = GenerateAnalystsState(market=market, max_analysts=2, analysts=[])
-
-    output = graph.invoke(initial_state.model_dump(), config)
-    print(output)
+    markets = fetch_active_markets()[:5]
+    for market in markets:
+        initial_state = GenerateAnalystsState(
+            market=market, max_analysts=3, analysts=[]
+        )
+        output = graph.invoke(initial_state.model_dump(), config)
+        print(output)
+        time.sleep(60)
 
 
 def observe_state(thread_id: str):
