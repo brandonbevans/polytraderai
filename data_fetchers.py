@@ -8,11 +8,61 @@ from models import Market
 import pytz
 from pydantic import ValidationError
 import json
+import os
+import dotenv
+
+dotenv.load_dotenv()
+
+
+def fetch_user_positions() -> set[str]:
+    """Fetch all markets where the user has an existing position.
+
+    Args:
+        wallet_id: Ethereum wallet address
+
+    Returns:
+        set: Set of condition_ids where user has positions
+    """
+    market_analyzer_logger: logging.Logger = logging.getLogger("MarketAnalyzer")
+    wallet_id = os.environ.get("POLYMARKET_PROXY_ADDRESS")
+    url = f"https://data-api.polymarket.com/positions?sizeThreshold=.1&user={wallet_id}"
+
+    try:
+        response = requests.get(url)
+        response.raise_for_status()
+        positions_data = response.json()
+
+        # Extract condition_ids from positions
+        markets_with_positions = {
+            position["conditionId"]
+            for position in positions_data
+            if float(position.get("size", 0)) > 0.1  # Additional size check
+        }
+
+        market_analyzer_logger.info(
+            f"Found {len(markets_with_positions)} markets with existing positions"
+        )
+        return markets_with_positions
+
+    except requests.RequestException as e:
+        market_analyzer_logger.error(f"Error fetching user positions: {e}")
+        return set()
+    except Exception as e:
+        market_analyzer_logger.error(f"Unexpected error fetching positions: {e}")
+        return set()
 
 
 def fetch_active_markets() -> List[Market]:
+    """Fetch active markets, excluding those where user has positions if wallet_id provided."""
     market_analyzer_logger: logging.Logger = logging.getLogger("MarketAnalyzer")
     market_analyzer_logger.debug("Fetching active markets")
+
+    # Get markets with existing positions if wallet_id provided
+    markets_to_exclude = set()
+    markets_to_exclude = fetch_user_positions()
+    market_analyzer_logger.debug(
+        f"Excluding {len(markets_to_exclude)} markets with existing positions"
+    )
 
     # Calculate the minimum end date (e.g., 24 hours from now)
     min_end_date = datetime.now(pytz.UTC) + timedelta(
@@ -21,7 +71,7 @@ def fetch_active_markets() -> List[Market]:
 
     # Prepare query parameters
     params = {
-        "limit": 50,  # Adjust this number as needed
+        "limit": 200,  # Adjust this number as needed
         "offset": 0,
         "order": "volume",  # Sort by volume
         "ascending": False,  # Highest volume first
@@ -40,9 +90,20 @@ def fetch_active_markets() -> List[Market]:
         markets_data = response.json()
         market_analyzer_logger.debug(f"Received {len(markets_data)} markets from API.")
 
-        markets = []
+        # Add position filtering
+        filtered_markets = []
         for market_data in markets_data:
             try:
+                # Skip markets where we have positions
+                if market_data["conditionId"] in markets_to_exclude:
+                    market_analyzer_logger.debug(
+                        f"Skipping market {market_data['conditionId']} due to existing position"
+                    )
+                    print(
+                        f"Skipping market {market_data['conditionId']} due to existing position"
+                    )
+                    continue
+
                 # Pre-process the data
                 for field in ["outcomes", "outcomePrices", "clobTokenIds"]:
                     if isinstance(market_data.get(field), str):
@@ -70,36 +131,32 @@ def fetch_active_markets() -> List[Market]:
                     market.outcome_prices[1] if len(market.outcome_prices) > 1 else 0
                 )
 
-                if 0.20 < yes_odds < 0.80 and 0.20 < no_odds < 0.80:
-                    markets.append(market)
+                if 0.10 < yes_odds < 0.90 and 0.10 < no_odds < 0.90:
+                    filtered_markets.append(market)
                 else:
                     market_analyzer_logger.debug(
                         f"Skipping market {market.condition_id} due to odds outside range: Yes={yes_odds}, No={no_odds}"
                     )
+
             except ValidationError as ve:
                 market_analyzer_logger.warning(f"Skipping invalid market: {ve}")
                 market_analyzer_logger.debug(f"Invalid market data: {market_data}")
 
-        markets = [market for market in markets if market.enable_order_book]
-        market_analyzer_logger.info(f"Fetched {len(markets)} relevant markets")
+        # Final filtering for order book enabled markets
+        markets = [market for market in filtered_markets if market.enable_order_book]
+
+        market_analyzer_logger.info(
+            f"Fetched {len(markets)} relevant markets "
+            f"(excluded {len(markets_to_exclude)} with positions)"
+        )
         return markets
+
     except requests.RequestException as e:
         market_analyzer_logger.error(f"Error fetching active markets: {e}")
         return []
     except Exception as e:
         market_analyzer_logger.error(f"Unexpected error: {e}")
         return []
-
-
-def fetch_market_data(condition_id: str) -> Optional[Dict[str, Any]]:
-    url = f"{Config.GAMMA_ENDPOINT}/markets/{condition_id}"
-    try:
-        response = requests.get(url)
-        response.raise_for_status()
-        return response.json()
-    except requests.RequestException as e:
-        logging.error(f"Error fetching market data: {e}")
-        return None
 
 
 def fetch_order_book(condition_id: str) -> Optional[Dict[str, Any]]:
@@ -134,3 +191,7 @@ def fetch_google_trends_data(market_topic: str) -> Optional[Dict[str, Any]]:
     except Exception as e:
         logging.error(f"Error fetching Google Trends data: {e}")
         return None
+
+
+if __name__ == "__main__":
+    print(fetch_active_markets())

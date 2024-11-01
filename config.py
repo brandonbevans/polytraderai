@@ -25,10 +25,12 @@ class Config:
     TIKTOK_API_KEY = os.environ.get("TIKTOK_API_KEY")
 
     # Market analysis settings
-    MARKET_LIQUIDITY_THRESHOLD = int(os.environ.get("MARKET_LIQUIDITY_THRESHOLD", 1000))
+    MARKET_LIQUIDITY_THRESHOLD = int(
+        os.environ.get("MARKET_LIQUIDITY_THRESHOLD", 10000)
+    )
     MARKET_TIME_THRESHOLD = int(os.environ.get("MARKET_TIME_THRESHOLD", 24))
     MARKET_ANALYSIS_INTERVAL = int(os.environ.get("MARKET_ANALYSIS_INTERVAL", 300))
-    MARKET_VOLUME_THRESHOLD = int(os.environ.get("MARKET_VOLUME_THRESHOLD", 1000))
+    MARKET_VOLUME_THRESHOLD = int(os.environ.get("MARKET_VOLUME_THRESHOLD", 10000))
     MARKET_LIMIT = int(os.environ.get("MARKET_LIMIT", 100))
 
     # Database configuration (if needed)

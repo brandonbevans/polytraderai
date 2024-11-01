@@ -1,12 +1,9 @@
-import pprint
-from langchain_core.tools import tool
-from models import Balances, OrderDetails, OrderResponse
+from models import Balances, OrderResponse, TraderState
 from py_clob_client.client import ClobClient
-from py_clob_client.clob_types import OrderArgs, OrderType
+from py_clob_client.clob_types import OrderType, MarketOrderArgs
 import os
 import logging
 from py_clob_client.constants import POLYGON, AMOY
-from py_clob_client.clob_types import ApiCreds
 from dotenv import load_dotenv
 from web3 import Web3
 
@@ -31,6 +28,8 @@ class PolymarketTrader:
                 host=host,
                 key=key,
                 chain_id=chain_id,
+                signature_type=1,
+                funder=os.getenv("POLYMARKET_PROXY_ADDRESS"),
             )
             self.client.set_api_creds(self.client.create_or_derive_api_creds())
 
@@ -38,38 +37,38 @@ class PolymarketTrader:
             # Mumbai testnet setup
             host = "https://clob.polymarket.com"
             chain_id = AMOY
-            creds = ApiCreds(
-                api_key=os.getenv("CLOB_API_KEY"),
-                api_secret=os.getenv("CLOB_SECRET"),
-                api_passphrase=os.getenv("CLOB_PASS_PHRASE"),
+            self.client = ClobClient(
+                host=host,
+                key=key,
+                chain_id=chain_id,
+                signature_type=1,
+                funder=os.getenv("POLYMARKET_PROXY_ADDRESS"),
             )
-            self.client = ClobClient(host, key=key, chain_id=chain_id, creds=creds)
+            self.client.set_api_creds(self.client.create_or_derive_api_creds())
 
 
-@tool("trade_execution")
-def trade_execution(order_details: OrderDetails):
+def _trade_execute(order_args: MarketOrderArgs):
+    trader = PolymarketTrader()
+
+    signed_order = trader.client.create_market_order(order_args)
+    resp = trader.client.post_order(signed_order, OrderType.FOK)
+    return resp
+
+
+def trade_execution(state: TraderState):
     """Execute trades based on market analysis recommendation."""
     try:
         # Create order arguments
-        order_args = OrderArgs(
-            price=order_details.price,
-            size=order_details.size,
-            side=order_details.side,
-            token_id=order_details.token_id,
-            expiration=order_details.expiration,
+        order_args = MarketOrderArgs(
+            token_id=state.order_details.token_id,
+            amount=state.order_details.amount,
         )
 
-        trader = PolymarketTrader()
-        signed_order = trader.client.create_order(order_args)
-        resp = trader.client.post_order(signed_order, OrderType.GTC)
-        pprint.pprint(resp)
+        resp = _trade_execute(order_args)
 
         return {
             "order_response": OrderResponse(
                 status="success",
-                side=order_details.side,
-                size=order_details.size,
-                price=order_details.price,
                 response=resp,
             )
         }
@@ -101,10 +100,8 @@ def get_balances(state: Balances):
         }
     ]
 
-    trader = PolymarketTrader()
     # wallet_address = trader.client.get_address()
-    wallet_address = "0xdC8A2C33f07Ff317B6cA53C5b7318184B6Ac3009"
-    print(wallet_address)
+    wallet_address = os.getenv("POLYMARKET_PROXY_ADDRESS")
     # Create contract instance
     usdc_contract = w3.eth.contract(address=USDC_ADDRESS, abi=USDC_ABI)
 
@@ -114,14 +111,3 @@ def get_balances(state: Balances):
     balance_formatted = balance / 1e6
 
     return {"balances": {"USDC": balance_formatted}}
-
-
-if __name__ == "__main__":
-    lol = trade_execution.invoke(
-        input={
-            "order_details": OrderDetails(
-                price=0.5, size=1, side="BUY", token_id="1", expiration="0"
-            )
-        }
-    )
-    print(lol)

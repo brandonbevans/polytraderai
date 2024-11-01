@@ -102,15 +102,17 @@ class Perspectives(BaseModel):
 
 
 class Recommendation(BaseModel):
-    recommendation: str = Field(
-        description="Recommendation on whether to buy one of the outcomes, or do nothing.",
-        default="",
+    outcome_index: int = Field(
+        description="Index of the outcome to buy (0 or 1)", ge=0, le=1, default=0
     )
     conviction: int = Field(
-        description="Conviction score for the recommendation, between 0 and 100.",
-        default=0,
+        description="Conviction score for the recommendation, between 0 and 100",
         ge=0,
         le=100,
+        default=0,
+    )
+    reasoning: str = Field(
+        description="Detailed reasoning for the recommendation", default=""
     )
 
     class Config:
@@ -138,9 +140,6 @@ class InterviewState(MessagesState):
 
 class OrderResponse(BaseModel):
     status: str = Field(description="Status of the order", default="fail")
-    side: str | None = Field(description="Side of the order", default=None)
-    size: float | None = Field(description="Size of the order", default=None)
-    price: float | None = Field(description="Price of the order", default=None)
     response: dict = Field(description="Response from the order", default={})
 
 
@@ -148,36 +147,13 @@ class SearchQuery(BaseModel):
     search_query: str = Field(None, description="Search query for retrieval.")
 
 
-class OrderDetails(BaseModel):
+class MarketOrderDetails(BaseModel):
     """Model for order details required by Polymarket CLOB"""
 
-    token_id: str = Field(description="The token ID for the outcome being traded")
-    price: float = Field(
-        description="The price at which to execute the trade", gt=0, le=1
+    token_id: str = Field(
+        description="The token ID for the outcome being traded", default=""
     )
-    size: float = Field(description="The size of the order in USD", gt=0)
-    side: str = Field(description="The side of the trade (BUY or SELL)", default="SELL")
-    expiration: str = Field(
-        description="Order expiration timestamp in Unix milliseconds",
-        default="0",  # Default to far future
-    )
-    order_type: str = Field(
-        description="Type of order (GTC, GTD, or IOC)", default="GTC"
-    )
-    salt: str = Field(description="Unique identifier for the order", default="")
-    maker: str = Field(description="Address of the order maker", default="")
-
-    @validator("side")
-    def validate_side(cls, v):
-        if v.upper() not in ["BUY", "SELL"]:
-            raise ValueError("side must be either BUY or SELL")
-        return v.upper()
-
-    @validator("order_type")
-    def validate_order_type(cls, v):
-        if v.upper() not in ["GTC", "GTD", "IOC"]:
-            raise ValueError("order_type must be GTC, GTD, or IOC")
-        return v.upper()
+    amount: float = Field(description="The size of the order in USD", gt=0)
 
 
 class TraderState(BaseModel):
@@ -185,8 +161,11 @@ class TraderState(BaseModel):
 
     market: Market
     recommendation: Recommendation
-    order_response: str = Field(default="")
-    performance: str = Field(default="")
+    balances: dict
+    order_details: MarketOrderDetails = Field(
+        default=MarketOrderDetails(amount=0.0001, token_id="")
+    )
+    order_response: OrderResponse = Field(default_factory=lambda: OrderResponse())
 
     class Config:
         arbitrary_types_allowed = True
@@ -202,18 +181,11 @@ class ResearchGraphState(BaseModel):
     recommendation: Recommendation = Field(
         default_factory=lambda: Recommendation(recommendation="", conviction=0)
     )
-    order_response: str = Field(default="")
+    order_response: OrderResponse = Field(default_factory=lambda: OrderResponse())
     balances: dict = Field(default={})
     performance: str = Field(default="")
-    order_details: OrderDetails = Field(
-        default=OrderDetails(
-            status="fail",
-            side="SELL",
-            size=1,
-            price=0.00000000001,
-            response={},
-            token_id="",
-        )
+    order_details: MarketOrderDetails = Field(
+        default=MarketOrderDetails(amount=0.0001, token_id="")
     )
 
     class Config:

@@ -1,8 +1,8 @@
-from langchain_core.messages.base import BaseMessage
+import sqlite3
+import uuid
 from langgraph_sdk import get_client
 from data_fetchers import fetch_active_markets
 from langgraph_sdk.schema import Thread
-import asyncio
 from langchain_community.document_loaders import WikipediaLoader
 from langchain_community.tools.tavily_search import TavilySearchResults
 from langchain_core.messages import (
@@ -15,11 +15,12 @@ from langchain_openai import ChatOpenAI
 
 from langgraph.constants import Send
 from langgraph.graph import END, START, StateGraph
-
+from langgraph.checkpoint.sqlite import SqliteSaver
 from models import (
     Market,
     GenerateAnalystsState,
     InterviewState,
+    MarketOrderDetails,
     Perspectives,
     Recommendation,
     ResearchGraphState,
@@ -30,7 +31,7 @@ from trade_tools import get_balances, trade_execution
 
 ### LLM
 
-llm = ChatOpenAI(model="gpt-4o-mini", temperature=0)
+llm = ChatOpenAI(model="gpt-4o", temperature=0)
 
 
 ### Nodes and edges
@@ -388,28 +389,44 @@ def initiate_all_interviews(state: ResearchGraphState):
     ]
 
 
-recommendation_instructions = """You are an expert market analyst creating a comprehensive report on this prediction market:
+# Update the recommendation instructions
+recommendation_instructions = """You are a market analyst creating a recommendation for a prediction market.
 
-Market Question: {market.question}
+MARKET DETAILS:
+Question: {market.question}
 Description: {market.description}
-Current Odds: {market_odds}
+Outcomes: {market.outcomes}
+Current Odds: 
+- {market.outcomes[0]}: {market.outcome_prices[0]:.2%}
+- {market.outcomes[1]}: {market.outcome_prices[1]:.2%}
 End Date: {market.end_date}
 Volume: {market.volume}
-    
-You have a team of analysts. Each analyst has done two things: 
 
-1. They conducted an interview with an expert on a specific prediction market.
-2. They write up their findings into a memo.
+Your task is to analyze the research provided and make a recommendation on which outcome to BUY.
+Note: You can only BUY one of the two outcomes - you cannot SELL as we don't have any existing positions.
 
-Your task: 
-
-1. You will be given a collection of memos from your analysts, along with the current odds for the prediction market.
-2. Think carefully about the insights from each memo.
-3. Based on the provided odds and your analysis of the memos, make a recommendation on whether to buy one of the outcomes, or do nothing. 
-Also provide your conviction score for the recommendation, where the conviction score is defined as how confident you are that buying this outcome has relative edge over the odds.
-
-Here are the memos from your analysts to build your report from:
+Based on the provided memos from your analysts:
 {context}
+
+Create a recommendation that includes:
+1. Which outcome to BUY (must be one of: {market.outcomes})
+2. Your conviction level (0-100) in this recommendation
+3. Detailed reasoning explaining:
+   - Why you chose this outcome
+   - Why the current market odds are incorrect
+   - Key evidence supporting your view
+   - Potential risks to your thesis
+
+Remember:
+- You can only recommend BUYING one of the two outcomes
+- Higher conviction (>70) should only be used when evidence strongly suggests market odds are wrong
+- Lower conviction (<30) suggests staying out of the market
+- Consider time until market resolution and potential catalysts
+
+Output your recommendation as a structured object with:
+- outcome_index: 0 for {market.outcomes[0]}, 1 for {market.outcomes[1]}
+- conviction: 0-100 score
+- reasoning: Detailed explanation of your recommendation
 """
 
 
@@ -437,43 +454,78 @@ def write_recommendation(state: ResearchGraphState):
     return {"recommendation": recommendation}
 
 
-trader_instructions = """You are an expert trader tasked with executing a trade based on a recommendation.
-Here is the market data: {market}
-Here is a recommendation: {recommendation}
+def get_trader_instructions(
+    market: Market, recommendation: Recommendation, balances: dict
+):
+    trader_instructions = f"""You are an expert crypto derivatives trader specializing in prediction markets. Your task is to execute a trade based on a thorough market analysis.
 
-Your task is to execute the trade based on the recommendation and the current balances provided.
-Use the trade_execution tool to execute the trade, you'll need to format the trade details as an OrderDetails object.
-For the token_id, use the clob_token_id from the market data. They correspond to the outcomes."""
+    MARKET DETAILS:
+    Question: {market.question}
+    Outcomes: {market.outcomes}
+    Current Odds:
+    - {market.outcomes[0]}: {market.outcome_prices[0]:.2%}
+    - {market.outcomes[1]}: {market.outcome_prices[1]:.2%}
+
+    RECOMMENDATION:
+    Selected Outcome: {market.outcomes[recommendation.outcome_index]}
+    Conviction: {recommendation.conviction}/100
+    Reasoning: {recommendation.reasoning}
+
+    ACCOUNT STATUS:
+    Available USDC Balance: {balances["USDC"]:.2f}
+
+    Your task is to create an order that:
+    1. POSITION SIZING:
+    - Base Position Size on both conviction and available USDC balance
+    - For high conviction (>80): Use up to 25% of available USDC balance
+    - For medium conviction (60-80): Use up to 15% of available USDC balance
+    - For lower conviction (<60): No trade
+    - Never exceed $1000 per trade regardless of conviction
+    - Remember: Total USDC spent = size * price
+    - Position Size needs to be at least $5
+
+    2. TOKEN SELECTION:
+    - Use token_id: {market.clob_token_ids[recommendation.outcome_index]}
+    - This corresponds to the recommended outcome: {market.outcomes[recommendation.outcome_index]}
+
+    3. PRICE EXECUTION:
+    - Use current market price: {market.outcome_prices[recommendation.outcome_index]:.4f}
 
 
-def trader_execution(state: TraderState):
-    """Node to execute the trader's recommendation"""
+    RISK MANAGEMENT RULES:
+    - Never risk more than 25% of available balance on a single trade
+    - Ensure minimum order size is respected (minimum $5)
+    - Account for price impact on larger orders
+    - Leave some balance for future opportunities
+
+    Output a MarketOrderDetails object with these exact fields:
+    - token_id: The correct token ID for the chosen outcome
+    - amount: Position size in USDC - must be at least 5
+    """
+    return trader_instructions
+
+
+def trade_configuration(state: TraderState):
+    """Node to create the order details"""
 
     market = state.market
     recommendation = state.recommendation
-    llm_trader = llm.bind_tools([trade_execution])
+    balances = state.balances
 
-    trade: BaseMessage = llm_trader.invoke(
-        [
-            SystemMessage(
-                content=trader_instructions.format(
-                    market=market, recommendation=recommendation
-                )
-            )
-        ]
+    recommendation.outcome_index = int(recommendation.outcome_index)
+    instructions = get_trader_instructions(market, recommendation, balances)
+
+    llm_trader = llm.with_structured_output(MarketOrderDetails)
+    order_details = llm_trader.invoke(
+        [SystemMessage(content=instructions)]
         + [
             HumanMessage(
-                content="Execute the trade, and then output the order response as an OrderResponse object."
+                content="Read over the instructions and create an MarketOrderDetails object based on the details provided."
             )
         ],
     )
-    return {"order_response": trade.content}
 
-
-def performance_review(state: ResearchGraphState):
-    """Node to review the performance of the traders"""
-
-    return {"performance": "good"}
+    return {"order_details": order_details}
 
 
 # Add nodes and edges
@@ -482,8 +534,8 @@ builder.add_node("create_analysts", create_analysts)
 builder.add_node("conduct_interview", interview_builder.compile())
 builder.add_node("write_recommendation", write_recommendation)
 builder.add_node("check_balances", get_balances)
-builder.add_node("trader_execution", trader_execution)
-builder.add_node("performance_review", performance_review)
+builder.add_node("trade_configuration", trade_configuration)
+builder.add_node("trade_execution", trade_execution)
 # Logic
 builder.add_edge(START, "create_analysts")
 builder.add_conditional_edges(
@@ -491,17 +543,20 @@ builder.add_conditional_edges(
 )
 builder.add_edge("conduct_interview", "write_recommendation")
 builder.add_edge("write_recommendation", "check_balances")
-builder.add_edge("check_balances", "trader_execution")
-builder.add_edge("trader_execution", "performance_review")
-builder.add_edge("performance_review", END)
+builder.add_edge("check_balances", "trade_configuration")
+builder.add_edge("trade_configuration", "trade_execution")
+builder.add_edge("trade_execution", END)
 
+db_path = "state_db/example.db"
+conn = sqlite3.connect(db_path, check_same_thread=False)
 
+memory = SqliteSaver(conn)
 # Compile
-graph = builder.compile()
+graph = builder.compile(checkpointer=memory)
 
 
 async def main():
-    URL = "http://localhost:62630"
+    URL = "http://localhost:55147"
     client = get_client(url=URL)
 
     thread: Thread = await client.threads.create()
@@ -517,5 +572,23 @@ async def main():
     print(run)
 
 
+def run_in_sdk(thread_id: str):
+    config = {"configurable": {"thread_id": thread_id}}
+    market = fetch_active_markets()[0]  # Get first active market
+    initial_state = GenerateAnalystsState(market=market, max_analysts=2, analysts=[])
+
+    output = graph.invoke(initial_state.model_dump(), config)
+    print(output)
+
+
+def observe_state(thread_id: str):
+    config = {"configurable": {"thread_id": thread_id}}
+    state = graph.get_state(config=config)
+    print(state)
+
+
 if __name__ == "__main__":
-    asyncio.run(main())
+    # asyncio.run(main())
+    thread_id = str(uuid.uuid4())
+    run_in_sdk(thread_id)
+    # observe_state(thread_id)
