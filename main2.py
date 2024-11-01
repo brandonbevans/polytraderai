@@ -1,8 +1,7 @@
-import asyncio
 from langgraph_sdk import get_client
 from data_fetchers import fetch_active_markets
 from langgraph_sdk.schema import Thread
-
+import asyncio
 from langchain_community.document_loaders import WikipediaLoader
 from langchain_community.tools.tavily_search import TavilySearchResults
 from langchain_core.messages import (
@@ -21,15 +20,16 @@ from models import (
     GenerateAnalystsState,
     InterviewState,
     Perspectives,
+    Recommendation,
     ResearchGraphState,
     SearchQuery,
     TraderState,
 )
-from trade_tools import trade_execution
+from trade_tools import get_balances, trade_execution
 
 ### LLM
 
-llm = ChatOpenAI(model="gpt-4o", temperature=0)
+llm = ChatOpenAI(model="gpt-4o-mini", temperature=0)
 
 
 ### Nodes and edges
@@ -427,7 +427,7 @@ def write_recommendation(state: ResearchGraphState):
     system_message = recommendation_instructions.format(
         market=market, market_odds=market_odds, context=formatted_str_sections
     )
-    recommendation = llm.with_structured_output(TraderState).invoke(
+    recommendation = llm.with_structured_output(Recommendation).invoke(
         [SystemMessage(content=system_message)]
         + [HumanMessage(content="Create a recommendation based upon these memos.")]
     )
@@ -436,12 +436,13 @@ def write_recommendation(state: ResearchGraphState):
     return {"recommendation": recommendation}
 
 
-trader_instructions = """You are an expert market analyst tasked with executing a trade based on a recommendation.
+trader_instructions = """You are an expert trader tasked with executing a trade based on a recommendation.
 Here is the market data: {market}
 Here is a recommendation: {recommendation}
 
-Your task is to execute the trade based on the recommendation.
-Use the provided trade_execution tool to execute the trade, you'll need to format the trade details as an OrderDetails object."""
+Your task is to execute the trade based on the recommendation and the current balances provided.
+Use the trade_execution tool to execute the trade, you'll need to format the trade details as an OrderDetails object.
+For the token_id, use the clob_token_id from the market data. They correspond to the outcomes."""
 
 
 def trader_execution(state: TraderState):
@@ -461,7 +462,7 @@ def trader_execution(state: TraderState):
         ]
         + [HumanMessage(content="Execute the trade.")]
     )
-    return {"trade": trade}
+    return {"order_response": trade}
 
 
 # Add nodes and edges
@@ -469,6 +470,8 @@ builder = StateGraph(ResearchGraphState)
 builder.add_node("create_analysts", create_analysts)
 builder.add_node("conduct_interview", interview_builder.compile())
 builder.add_node("write_recommendation", write_recommendation)
+builder.add_node("check_balances", get_balances)
+builder.add_node("trader_execution", trader_execution)
 
 # Logic
 builder.add_edge(START, "create_analysts")
@@ -476,7 +479,9 @@ builder.add_conditional_edges(
     "create_analysts", initiate_all_interviews, ["conduct_interview"]
 )
 builder.add_edge("conduct_interview", "write_recommendation")
-builder.add_edge("write_recommendation", END)
+builder.add_edge("write_recommendation", "check_balances")
+builder.add_edge("check_balances", "trader_execution")
+builder.add_edge("trader_execution", END)
 
 
 # Compile
@@ -484,7 +489,7 @@ graph = builder.compile()
 
 
 async def main():
-    URL = "http://localhost:49472"
+    URL = "http://localhost:63234"
     client = get_client(url=URL)
 
     thread: Thread = await client.threads.create()
