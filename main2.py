@@ -1,3 +1,4 @@
+from langchain_core.messages.base import BaseMessage
 from langgraph_sdk import get_client
 from data_fetchers import fetch_active_markets
 from langgraph_sdk.schema import Thread
@@ -450,9 +451,9 @@ def trader_execution(state: TraderState):
 
     market = state.market
     recommendation = state.recommendation
-
     llm_trader = llm.bind_tools([trade_execution])
-    trade = llm_trader.invoke(
+
+    trade: BaseMessage = llm_trader.invoke(
         [
             SystemMessage(
                 content=trader_instructions.format(
@@ -460,9 +461,19 @@ def trader_execution(state: TraderState):
                 )
             )
         ]
-        + [HumanMessage(content="Execute the trade.")]
+        + [
+            HumanMessage(
+                content="Execute the trade, and then output the order response as an OrderResponse object."
+            )
+        ],
     )
-    return {"order_response": trade}
+    return {"order_response": trade.content}
+
+
+def performance_review(state: ResearchGraphState):
+    """Node to review the performance of the traders"""
+
+    return {"performance": "good"}
 
 
 # Add nodes and edges
@@ -472,7 +483,7 @@ builder.add_node("conduct_interview", interview_builder.compile())
 builder.add_node("write_recommendation", write_recommendation)
 builder.add_node("check_balances", get_balances)
 builder.add_node("trader_execution", trader_execution)
-
+builder.add_node("performance_review", performance_review)
 # Logic
 builder.add_edge(START, "create_analysts")
 builder.add_conditional_edges(
@@ -481,7 +492,8 @@ builder.add_conditional_edges(
 builder.add_edge("conduct_interview", "write_recommendation")
 builder.add_edge("write_recommendation", "check_balances")
 builder.add_edge("check_balances", "trader_execution")
-builder.add_edge("trader_execution", END)
+builder.add_edge("trader_execution", "performance_review")
+builder.add_edge("performance_review", END)
 
 
 # Compile
@@ -489,13 +501,13 @@ graph = builder.compile()
 
 
 async def main():
-    URL = "http://localhost:63234"
+    URL = "http://localhost:62630"
     client = get_client(url=URL)
 
     thread: Thread = await client.threads.create()
 
     market = fetch_active_markets()[0]  # Get first active market
-    initial_state = GenerateAnalystsState(market=market, max_analysts=3, analysts=[])
+    initial_state = GenerateAnalystsState(market=market, max_analysts=1, analysts=[])
 
     run = await client.runs.create(
         thread_id=thread["thread_id"],

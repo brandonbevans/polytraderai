@@ -117,17 +117,6 @@ class Recommendation(BaseModel):
         arbitrary_types_allowed = True
 
 
-class TraderState(BaseModel):
-    """State for trade execution"""
-
-    market: Market
-    recommendation: Recommendation
-    order_response: str = Field(default="")
-
-    class Config:
-        arbitrary_types_allowed = True
-
-
 class GenerateAnalystsState(BaseModel):
     """State for generating analysts"""
 
@@ -147,6 +136,14 @@ class InterviewState(MessagesState):
     sections: list  # Final key we duplicate in outer state for Send() API
 
 
+class OrderResponse(BaseModel):
+    status: str = Field(description="Status of the order", default="fail")
+    side: str | None = Field(description="Side of the order", default=None)
+    size: float | None = Field(description="Size of the order", default=None)
+    price: float | None = Field(description="Price of the order", default=None)
+    response: dict = Field(description="Response from the order", default={})
+
+
 class SearchQuery(BaseModel):
     search_query: str = Field(None, description="Search query for retrieval.")
 
@@ -159,7 +156,7 @@ class OrderDetails(BaseModel):
         description="The price at which to execute the trade", gt=0, le=1
     )
     size: float = Field(description="The size of the order in USD", gt=0)
-    side: str = Field(description="The side of the trade (BUY or SELL)")
+    side: str = Field(description="The side of the trade (BUY or SELL)", default="SELL")
     expiration: str = Field(
         description="Order expiration timestamp in Unix milliseconds",
         default="0",  # Default to far future
@@ -182,7 +179,17 @@ class OrderDetails(BaseModel):
             raise ValueError("order_type must be GTC, GTD, or IOC")
         return v.upper()
 
-    order_response: dict = Field(default={})
+
+class TraderState(BaseModel):
+    """State for trade execution"""
+
+    market: Market
+    recommendation: Recommendation
+    order_response: str = Field(default="")
+    performance: str = Field(default="")
+
+    class Config:
+        arbitrary_types_allowed = True
 
 
 class ResearchGraphState(BaseModel):
@@ -197,6 +204,17 @@ class ResearchGraphState(BaseModel):
     )
     order_response: str = Field(default="")
     balances: dict = Field(default={})
+    performance: str = Field(default="")
+    order_details: OrderDetails = Field(
+        default=OrderDetails(
+            status="fail",
+            side="SELL",
+            size=1,
+            price=0.00000000001,
+            response={},
+            token_id="",
+        )
+    )
 
     class Config:
         arbitrary_types_allowed = True  # Allow Market type

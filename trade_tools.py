@@ -1,6 +1,6 @@
 import pprint
 from langchain_core.tools import tool
-from models import Balances, OrderDetails
+from models import Balances, OrderDetails, OrderResponse
 from py_clob_client.client import ClobClient
 from py_clob_client.clob_types import OrderArgs, OrderType
 import os
@@ -47,35 +47,39 @@ class PolymarketTrader:
 
 
 @tool("trade_execution")
-def trade_execution(order_details: OrderDetails) -> str:
+def trade_execution(order_details: OrderDetails):
     """Execute trades based on market analysis recommendation."""
-    # try:
-    # Create order arguments
-    order_args = OrderArgs(
-        price=order_details.price,
-        size=order_details.size,
-        side=order_details.side,
-        token_id=order_details.token_id,
-        expiration=order_details.expiration,
-    )
+    try:
+        # Create order arguments
+        order_args = OrderArgs(
+            price=order_details.price,
+            size=order_details.size,
+            side=order_details.side,
+            token_id=order_details.token_id,
+            expiration=order_details.expiration,
+        )
 
-    trader = PolymarketTrader()
-    signed_order = trader.client.create_order(order_args)
-    resp = trader.client.post_order(signed_order, OrderType.GTC)
-    pprint.pprint(resp)
+        trader = PolymarketTrader()
+        signed_order = trader.client.create_order(order_args)
+        resp = trader.client.post_order(signed_order, OrderType.GTC)
+        pprint.pprint(resp)
 
-    return {
-        "order_response": {
-            "status": "success",
-            "side": order_details.side,
-            "size": order_details.size,
-            "price": order_details.price,
-            "response": resp,
+        return {
+            "order_response": OrderResponse(
+                status="success",
+                side=order_details.side,
+                size=order_details.size,
+                price=order_details.price,
+                response=resp,
+            )
         }
-    }
-    # except Exception as e:
-    #     logger.error(f"Trade execution failed: {str(e)}")
-    #     return {"order_response": f"Trade execution failed: {str(e)}"}
+    except Exception as e:
+        logger.error(f"Trade execution failed: {str(e)}")
+        return {
+            "order_response": OrderResponse(
+                status="failure", response={"failure": str(e)}
+            )
+        }
 
 
 def get_balances(state: Balances):
@@ -113,4 +117,11 @@ def get_balances(state: Balances):
 
 
 if __name__ == "__main__":
-    print(get_balances(Balances(balances={})))
+    lol = trade_execution.invoke(
+        input={
+            "order_details": OrderDetails(
+                price=0.5, size=1, side="BUY", token_id="1", expiration="0"
+            )
+        }
+    )
+    print(lol)
