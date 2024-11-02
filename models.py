@@ -5,6 +5,7 @@ import json
 from langgraph.graph import MessagesState
 import operator
 from typing import Annotated
+from py_clob_client.clob_types import OrderArgs
 
 
 class Market(BaseModel):
@@ -147,13 +148,8 @@ class SearchQuery(BaseModel):
     search_query: str = Field(None, description="Search query for retrieval.")
 
 
-class MarketOrderDetails(BaseModel):
-    """Model for order details required by Polymarket CLOB"""
-
-    token_id: str = Field(
-        description="The token ID for the outcome being traded", default=""
-    )
-    amount: float = Field(description="The size of the order in USD", gt=0)
+class OrderDetails(BaseModel):
+    order_args: OrderArgs
 
 
 class TraderState(BaseModel):
@@ -162,8 +158,10 @@ class TraderState(BaseModel):
     market: Market
     recommendation: Recommendation
     balances: dict
-    order_details: MarketOrderDetails = Field(
-        default=MarketOrderDetails(amount=0.0001, token_id="")
+    order_details: OrderDetails = Field(
+        default=OrderDetails(
+            order_args=OrderArgs(price=0.0, size=0.0001, side="buy", token_id="")
+        )
     )
     order_response: OrderResponse = Field(default_factory=lambda: OrderResponse())
 
@@ -184,8 +182,10 @@ class ResearchGraphState(BaseModel):
     order_response: OrderResponse = Field(default_factory=lambda: OrderResponse())
     balances: dict = Field(default={})
     performance: str = Field(default="")
-    order_details: MarketOrderDetails = Field(
-        default=MarketOrderDetails(amount=0.0001, token_id="")
+    order_details: OrderDetails = Field(
+        default=OrderDetails(
+            order_args=OrderArgs(price=0.0, size=0.0001, side="buy", token_id="")
+        )
     )
 
     class Config:

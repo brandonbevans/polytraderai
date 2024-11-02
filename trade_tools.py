@@ -50,8 +50,8 @@ class PolymarketTrader:
 def _trade_execute(order_args: MarketOrderArgs):
     trader = PolymarketTrader()
 
-    signed_order = trader.client.create_market_order(order_args)
-    resp = trader.client.post_order(signed_order, OrderType.FOK)
+    signed_order = trader.client.create_order(order_args)
+    resp = trader.client.post_order(signed_order, OrderType.GTC)
     return resp
 
 
@@ -59,10 +59,7 @@ def trade_execution(state: TraderState):
     """Execute trades based on market analysis recommendation."""
     try:
         # Create order arguments
-        order_args = MarketOrderArgs(
-            token_id=state.order_details.token_id,
-            amount=state.order_details.amount,
-        )
+        order_args = state.order_details.order_args
 
         resp = _trade_execute(order_args)
 

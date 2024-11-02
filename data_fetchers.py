@@ -99,9 +99,6 @@ def fetch_active_markets() -> List[Market]:
                     market_analyzer_logger.debug(
                         f"Skipping market {market_data['conditionId']} due to existing position"
                     )
-                    print(
-                        f"Skipping market {market_data['conditionId']} due to existing position"
-                    )
                     continue
 
                 # Pre-process the data
