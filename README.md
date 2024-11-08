@@ -2,11 +2,12 @@
 
 ## Overview
 
-An AI-agent for interacting with Polymarket's decentralized prediction markets on the Polygon network.
+An AI-agent for interacting with Polymarket's prediction markets.,
 The agent reviews open prediction markets, goes through various research processes, and makes trades based on the results.
 
-The quality of the trading decisions are a direct function of the quality of the research done by the reading agent,
-and the agents self-awareness to know which markets it could have an edge in.
+The quality of the trading decisions are a direct function of the quality of the research done in the conduct_interview subgraph, and the agents self-awareness to know which markets it could have an edge in.
+
+This project as it is is a PoC and not extremely intelligent, but the framework is there to add more and more intelligence as needed from different sources (i.e Reddit, Youtube, Google Trends, and anything else thats relevant to a given prediction market).
 
 
 ## LangGraph
@@ -22,13 +23,9 @@ The boxed subgraph takes an "interviewer" role, in order to best tease informati
 
 ## Installation
 
-1. Clone the repository:
-```bash
-git clone https://github.com/yourusername/polymarketagent.git
-cd polymarketagent
-```
+1. Clone the repo.
 
-2. Create and activate a virtual environment:
+2. Create and activate a virtual environment (I'm using python 3.12):
 ```bash
 python -m venv .venv
 source .venv/bin/activate  # On Windows, use `.venv\Scripts\activate`
