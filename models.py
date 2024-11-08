@@ -160,7 +160,9 @@ class TraderState(BaseModel):
     balances: dict
     order_details: OrderDetails = Field(
         default=OrderDetails(
-            order_args=OrderArgs(price=0.0, size=0.0001, side="buy", token_id="")
+            order_args=OrderArgs(  # nosec
+                price=0.0, size=0.0001, side="buy", token_id=""
+            )
         )
     )
     order_response: OrderResponse = Field(default_factory=lambda: OrderResponse())
@@ -184,7 +186,9 @@ class ResearchGraphState(BaseModel):
     performance: str = Field(default="")
     order_details: OrderDetails = Field(
         default=OrderDetails(
-            order_args=OrderArgs(price=0.0, size=0.0001, side="buy", token_id="")
+            order_args=OrderArgs(  # nosec
+                price=0.0, size=0.0001, side="buy", token_id=""
+            )
         )
     )
 

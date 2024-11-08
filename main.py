@@ -21,12 +21,12 @@ from models import (
     Market,
     GenerateAnalystsState,
     InterviewState,
-    MarketOrderDetails,
     Perspectives,
     Recommendation,
     ResearchGraphState,
     SearchQuery,
     TraderState,
+    OrderDetails,
 )
 from trade_tools import get_balances, trade_execution
 
@@ -490,7 +490,10 @@ def get_trader_instructions(
     - This corresponds to the recommended outcome: {market.outcomes[recommendation.outcome_index]}
 
     3. PRICE EXECUTION:
-    - Use current market price: {market.outcome_prices[recommendation.outcome_index]:.4f}
+    - Current market price is: {market.outcome_prices[recommendation.outcome_index]:.4f}
+    - Set limit price 0.5% above current highest bid to ensure execution while minimizing slippage
+    - This places us at top of order book but better than market order price
+    - Example: If current price is 0.4000, set limit at ~0.4020
 
 
     RISK MANAGEMENT RULES:
@@ -499,9 +502,15 @@ def get_trader_instructions(
     - Account for price impact on larger orders
     - Leave some balance for future opportunities
 
-    Output a MarketOrderDetails object with these exact fields:
-    - token_id: The correct token ID for the chosen outcome
-    - amount: Position size in USDC - must be at least 5
+    Output a OrderDetails object with these exact fields:
+    - order_args: OrderArgs object with the correct token ID and position size
+    OrderArgs:
+        - price: The current market price for the outcome
+        - size: The amount of shares to buy at the above price
+        - side: "BUY"
+        - token_id: The correct token ID for the chosen outcome
+    
+    Note: The product of size and price MUST be at least $1
     """
     return trader_instructions
 
@@ -516,12 +525,12 @@ def trade_configuration(state: TraderState):
     recommendation.outcome_index = int(recommendation.outcome_index)
     instructions = get_trader_instructions(market, recommendation, balances)
 
-    llm_trader = llm.with_structured_output(MarketOrderDetails)
+    llm_trader = llm.with_structured_output(OrderDetails)
     order_details = llm_trader.invoke(
         [SystemMessage(content=instructions)]
         + [
             HumanMessage(
-                content="Read over the instructions and create an MarketOrderDetails object based on the details provided."
+                content="Read over the instructions and create an OrderDetails object based on the details provided."
             )
         ],
     )
@@ -567,8 +576,8 @@ async def main():
 
     run = await client.runs.create(
         thread_id=thread["thread_id"],
-        assistant_id="research_agent2",
-        input=initial_state.model_dump(),  # Use model_dump() for serialization
+        assistant_id="research_agent",
+        input=initial_state.model_dump()
     )
     print(run)
 
@@ -582,7 +591,7 @@ def run_in_sdk(thread_id: str):
         )
         output = graph.invoke(initial_state.model_dump(), config)
         print(output)
-        time.sleep(60)
+        time.sleep(100)
 
 
 def observe_state(thread_id: str):

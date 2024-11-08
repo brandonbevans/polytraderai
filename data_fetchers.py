@@ -13,6 +13,9 @@ import dotenv
 
 dotenv.load_dotenv()
 
+# Add a constant for timeout duration
+REQUESTS_TIMEOUT = 30  # seconds
+
 
 def fetch_user_positions() -> set[str]:
     """Fetch all markets where the user has an existing position.
@@ -28,7 +31,7 @@ def fetch_user_positions() -> set[str]:
     url = f"https://data-api.polymarket.com/positions?sizeThreshold=.1&user={wallet_id}"
 
     try:
-        response = requests.get(url)
+        response = requests.get(url, timeout=REQUESTS_TIMEOUT)
         response.raise_for_status()
         positions_data = response.json()
 
@@ -85,7 +88,9 @@ def fetch_active_markets() -> List[Market]:
     url: str = f"{Config.GAMMA_ENDPOINT}/markets"
 
     try:
-        response: requests.Response = requests.get(url, params=params)
+        response: requests.Response = requests.get(
+            url, params=params, timeout=REQUESTS_TIMEOUT
+        )
         response.raise_for_status()
         markets_data = response.json()
         market_analyzer_logger.debug(f"Received {len(markets_data)} markets from API.")
@@ -159,7 +164,7 @@ def fetch_active_markets() -> List[Market]:
 def fetch_order_book(condition_id: str) -> Optional[Dict[str, Any]]:
     url = f"{Config.CLOB_ENDPOINT}/book?market={condition_id}"
     try:
-        response = requests.get(url)
+        response = requests.get(url, timeout=REQUESTS_TIMEOUT)
         response.raise_for_status()
         return response.json()
     except requests.RequestException as e:

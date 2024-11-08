@@ -1,6 +1,6 @@
 from models import Balances, OrderResponse, TraderState
 from py_clob_client.client import ClobClient
-from py_clob_client.clob_types import OrderType, MarketOrderArgs
+from py_clob_client.clob_types import OrderType, OrderArgs
 import os
 import logging
 from py_clob_client.constants import POLYGON, AMOY
@@ -47,7 +47,7 @@ class PolymarketTrader:
             self.client.set_api_creds(self.client.create_or_derive_api_creds())
 
 
-def _trade_execute(order_args: MarketOrderArgs):
+def _trade_execute(order_args: OrderArgs):
     trader = PolymarketTrader()
 
     signed_order = trader.client.create_order(order_args)
@@ -59,7 +59,7 @@ def trade_execution(state: TraderState):
     """Execute trades based on market analysis recommendation."""
     try:
         # Create order arguments
-        order_args = state.order_details.order_args
+        order_args: OrderArgs = state.order_details.order_args
 
         resp = _trade_execute(order_args)
 
@@ -80,8 +80,9 @@ def trade_execution(state: TraderState):
 
 def get_balances(state: Balances):
     """Get the current USDC balance of the trader"""
-    # Polygon RPC URL - you may want to use an environment variable for this
-    w3 = Web3(Web3.HTTPProvider("https://polygon-rpc.com"))
+    # Get RPC URL from environment variable
+    rpc_url = os.getenv("POLYGON_RPC_URL", "https://polygon-rpc.com")
+    w3 = Web3(Web3.HTTPProvider(rpc_url))
 
     # USDC contract address on Polygon
     USDC_ADDRESS = "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174"

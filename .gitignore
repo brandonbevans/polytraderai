@@ -207,7 +207,8 @@ ehthumbs_vista.db
 
 # Recycle Bin used on file shares
 $RECYCLE.BIN/
-
+.github/
+.bandit
 # Windows Installer files
 *.cab
 *.msi
