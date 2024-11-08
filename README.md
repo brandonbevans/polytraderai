@@ -1,0 +1,133 @@
+# Polymarket Trading Agent
+
+## Overview
+
+An AI-agent for interacting with Polymarket's decentralized prediction markets on the Polygon network.
+The agent reviews open prediction markets, goes through various research processes, and makes trades based on the results.
+
+The quality of the trading decisions are a direct function of the quality of the research done by the reading agent,
+and the agents self-awareness to know which markets it could have an edge in.
+
+
+## LangGraph
+
+One intention of this project was to get experience with LangGraph, LangChain, and the various tools that LangGraph has to offer.
+
+Below is the graph visualization of the agent's workflow:
+
+![LangGraph Architecture](langgraph.png)
+
+The graph is generated using [LangGraph Studio](https://github.com/langchain-ai/langgraph-studio).
+The boxed subgraph takes an "interviewer" role, in order to best tease information out of the LLM agents.
+
+## Installation
+
+1. Clone the repository:
+```bash
+git clone https://github.com/yourusername/polymarketagent.git
+cd polymarketagent
+```
+
+2. Create and activate a virtual environment:
+```bash
+python -m venv .venv
+source .venv/bin/activate  # On Windows, use `.venv\Scripts\activate`
+```
+
+3. Install dependencies:
+```bash
+pip install -r requirements.txt
+```
+
+4. Create a `.env` file with your configuration:
+```env
+MAX_BET_SIZE=10
+RISK_TOLERANCE=0.5
+
+SERPAPI_KEY=
+TAVILY_API_KEY=
+
+OPENAI_API_KEY=
+LANGCHAIN_API_KEY=
+LANGCHAIN_TRACING_V2=true
+POLYMARKET_PROXY_ADDRESS=
+POLYMARKET_PRIVATE_KEY=
+```
+
+## Project Structure
+
+```
+├── data_fetchers.py     # Market data fetching utilities
+├── models.py            # Data models and types
+├── trade_tools.py       # Trading functionality
+├── requirements-dev.txt # Development dependencies
+└── .bandit             # Security configuration
+```
+
+## Security
+
+This project uses Bandit for security scanning. To run security checks:
+
+```bash
+bandit -r . -c .bandit
+```
+
+## Development
+
+### Setting up for development
+
+1. Install development dependencies:
+```bash
+pip install -r requirements-dev.txt
+```
+
+2. Run security checks before committing:
+```bash
+bandit -r .
+```
+
+### Best Practices
+
+- Always use timeouts with HTTP requests
+- Store sensitive configuration in environment variables
+- Run security checks before committing changes
+- Follow type hints and documentation standards
+
+
+## Contributing
+
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Run security checks
+5. Submit a pull request
+
+
+## License
+
+MIT License
+
+Copyright (c) 2024 polymarketagent
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+## Disclaimer
+
+This software is for educational purposes only. Trading carries risk. Use at your own discretion.
+
