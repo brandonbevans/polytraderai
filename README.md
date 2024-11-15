@@ -100,6 +100,19 @@ bandit -r .
 5. Submit a pull request
 
 
+## Roadmap
+
+### Upcoming Features
+
+- Add more tools to the agent's available tools:
+  - Reddit sentiment analysis
+  - Google Trends data integration
+  - Twitter/X social media analysis
+- Add a 'manager' to manage open positions:
+  - Automated position trimming for risk management
+  - Take-profit execution for winning trades
+  - Dynamic position sizing based on performance
+
 ## License
 
 MIT License
