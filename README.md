@@ -2,7 +2,7 @@
 
 ## Overview
 
-An AI-agent for interacting with Polymarket's prediction markets.,
+An AI-agent for interacting with Polymarket's prediction markets.
 The agent reviews open prediction markets, goes through various research processes, and makes trades based on the results.
 
 The quality of the trading decisions are a direct function of the quality of the research done in the conduct_interview subgraph, and the agents self-awareness to know which markets it could have an edge in.
