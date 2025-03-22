@@ -25,15 +25,15 @@ The boxed subgraph takes an "interviewer" role, in order to best tease informati
 
 1. Clone the repo.
 
-2. Create and activate a virtual environment (I'm using python 3.12):
+2. Create and activate a virtual environment (I'm using python 3.13):
 ```bash
-python -m venv .venv
+uv venv --python 3.13
 source .venv/bin/activate  # On Windows, use `.venv\Scripts\activate`
 ```
 
 3. Install dependencies:
 ```bash
-pip install -r requirements.txt
+uv sync
 ```
 
 4. Create a `.env` file with your configuration:
@@ -82,23 +82,6 @@ pip install -r requirements-dev.txt
 ```bash
 bandit -r .
 ```
-
-### Best Practices
-
-- Always use timeouts with HTTP requests
-- Store sensitive configuration in environment variables
-- Run security checks before committing changes
-- Follow type hints and documentation standards
-
-
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Run security checks
-5. Submit a pull request
-
 
 ## Roadmap
 

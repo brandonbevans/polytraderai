@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, field_validator
 from typing import List, Union
 from datetime import datetime
 import json
@@ -55,7 +55,7 @@ class Market(BaseModel):
     automatically_active: bool = Field(alias="automaticallyActive")
     clear_book_on_start: bool = Field(alias="clearBookOnStart")
 
-    @validator("outcomes", "outcome_prices", "clob_token_ids", pre=True)
+    @field_validator("outcomes", "outcome_prices", "clob_token_ids", mode="before")
     def parse_string_to_list(cls, v):
         if isinstance(v, str):
             try:
@@ -64,11 +64,19 @@ class Market(BaseModel):
                 return v.strip("[]").replace('"', "").split(",")
         return v
 
-    @validator("outcome_prices", pre=True)
+    @field_validator("outcome_prices", mode="before")
     def convert_to_float(cls, v):
         if isinstance(v, list):
             return [float(price) for price in v]
         return v
+
+    def __str__(self) -> str:
+        """String representation of the market including odds"""
+        odds = {
+            outcome: price for outcome, price in zip(self.outcomes, self.outcome_prices)
+        }
+        odds_str = "\n".join(f"{outcome}: {price}" for outcome, price in odds.items())
+        return f"Market: {self.question}\nOdds:\n{odds_str}"
 
     class Config:
         populate_by_name = True

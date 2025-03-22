@@ -6,10 +6,6 @@ load_dotenv()
 
 
 class Config:
-    # Flask configuration
-    SECRET_KEY = os.environ.get("SECRET_KEY")
-    DEBUG = os.environ.get("FLASK_DEBUG", "False").lower() == "true"
-
     # Logging configuration
     LOGGING_FORMAT = "%(asctime)s - %(levelname)s - %(message)s"
     LOGGING_FILE = "ai_prediction_market_trader.log"
@@ -21,8 +17,6 @@ class Config:
     # API keys
     POLYMARKET_API_KEY = os.environ.get("POLYMARKET_API_KEY")
     PERPLEXITY_API_KEY = os.environ.get("PERPLEXITY_API_KEY")
-    TWITTER_API_KEY = os.environ.get("TWITTER_API_KEY")
-    TIKTOK_API_KEY = os.environ.get("TIKTOK_API_KEY")
 
     # Market analysis settings
     MARKET_LIQUIDITY_THRESHOLD = int(

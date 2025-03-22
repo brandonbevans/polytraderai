@@ -35,16 +35,6 @@ from trade_tools import get_balances, trade_execution
 llm = ChatOpenAI(model="gpt-4o", temperature=0)
 
 
-### Nodes and edges
-
-
-def format_market_odds(market: Market) -> str:
-    """Format market odds into a readable string"""
-    return {
-        outcome: price for outcome, price in zip(market.outcomes, market.outcome_prices)
-    }
-
-
 analyst_instructions = """You are tasked with creating a set of AI analyst personas. Follow these instructions carefully:
 
 1. First, review the prediction market details:
@@ -69,7 +59,7 @@ def create_analysts(state: GenerateAnalystsState):
     max_analysts = state.max_analysts
 
     # Format market odds
-    market_odds = format_market_odds(market)
+    market_odds = str(market)
 
     # Enforce structured output
     structured_llm = llm.with_structured_output(Perspectives)
@@ -331,7 +321,6 @@ def write_section(state: InterviewState):
     """Node to write a section"""
 
     # Get state
-    interview = state["interview"]
     context = state["context"]
     analyst = state["analyst"]
 
@@ -437,7 +426,7 @@ def write_recommendation(state: ResearchGraphState):
     # Full set of sections
     sections = state.sections
     market = state.market
-    market_odds = format_market_odds(market)
+    market_odds = str(market)
 
     # Concat all sections together
     formatted_str_sections = "\n\n".join([f"{section}" for section in sections])
@@ -577,7 +566,7 @@ async def main():
     run = await client.runs.create(
         thread_id=thread["thread_id"],
         assistant_id="research_agent",
-        input=initial_state.model_dump()
+        input=initial_state.model_dump(),
     )
     print(run)
 
