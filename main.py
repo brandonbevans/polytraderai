@@ -1,5 +1,4 @@
 import sqlite3
-import time
 import uuid
 from langgraph_sdk import get_client
 from data_fetchers import fetch_active_markets
@@ -12,6 +11,7 @@ from langchain_core.messages import (
     SystemMessage,
     get_buffer_string,
 )
+from trade_tools import get_balances, trade_execution
 from langchain_openai import ChatOpenAI
 
 from langgraph.constants import Send
@@ -28,7 +28,6 @@ from models import (
     TraderState,
     OrderDetails,
 )
-from trade_tools import get_balances, trade_execution
 
 ### LLM
 
@@ -54,6 +53,7 @@ Volume: {market.volume}
 
 def create_analysts(state: GenerateAnalystsState):
     """Create analysts"""
+    print(f"⚙️ Creating analysts for market: {state.market.question}")
 
     market = state.market
     max_analysts = state.max_analysts
@@ -76,6 +76,10 @@ def create_analysts(state: GenerateAnalystsState):
         [SystemMessage(content=system_message)]
         + [HumanMessage(content="Generate the set of analysts.")]
     )
+
+    print(f"✅ Created {len(analysts.analysts)} analysts")
+    for analyst in analysts.analysts:
+        print(f"  - {analyst}")
 
     # Write the list of analysis to state
     return {"analysts": analysts.analysts}
@@ -103,6 +107,7 @@ Remember to stay in character throughout your response, reflecting the persona a
 
 def generate_question(state: InterviewState):
     """Node to generate a question"""
+    print(f"❓ Generating question for analyst: {state['analyst']}")
 
     # Get state
     analyst = state["analyst"]
@@ -132,6 +137,7 @@ Convert this final question into a well-structured web search query"""
 
 def search_web(state: InterviewState):
     """Retrieve docs from web search"""
+    print(f"🔍 Searching web for {state['analyst']}")
 
     # Search
     tavily_search = TavilySearchResults(max_results=3)
@@ -139,6 +145,8 @@ def search_web(state: InterviewState):
     # Search query
     structured_llm = llm.with_structured_output(SearchQuery)
     search_query = structured_llm.invoke([search_instructions] + state["messages"])
+
+    print(f"  Query: {search_query.search_query}")
 
     # Search
     search_docs = tavily_search.invoke(search_query.search_query)
@@ -151,15 +159,20 @@ def search_web(state: InterviewState):
         ]
     )
 
+    print(f"  Found {len(search_docs)} documents")
+
     return {"context": [formatted_search_docs]}
 
 
 def search_wikipedia(state: InterviewState):
     """Retrieve docs from wikipedia"""
+    print(f"📚 Searching Wikipedia for {state['analyst']}")
 
     # Search query
     structured_llm = llm.with_structured_output(SearchQuery)
     search_query = structured_llm.invoke([search_instructions] + state["messages"])
+
+    print(f"  Query: {search_query.search_query}")
 
     # Search
     search_docs = WikipediaLoader(
@@ -173,6 +186,8 @@ def search_wikipedia(state: InterviewState):
             for doc in search_docs
         ]
     )
+
+    print(f"  Found {len(search_docs)} documents")
 
     return {"context": [formatted_search_docs]}
 
@@ -209,6 +224,7 @@ And skip the addition of the brackets as well as the Document source preamble in
 
 def generate_answer(state: InterviewState):
     """Node to answer a question"""
+    print(f"💬 Generating expert answer for {state['analyst']}")
 
     # Get state
     analyst = state["analyst"]
@@ -222,18 +238,23 @@ def generate_answer(state: InterviewState):
     # Name the message as coming from the expert
     answer.name = "expert"
 
+    print(f"  Expert answered with {len(answer.content)} characters")
+
     # Append it to state
     return {"messages": [answer]}
 
 
 def save_interview(state: InterviewState):
     """Save interviews"""
+    print(f"💾 Saving interview with {state['analyst']}")
 
     # Get messages
     messages = state["messages"]
 
     # Convert interview to a string
     interview = get_buffer_string(messages)
+
+    print(f"  Interview contains {len(messages)} messages")
 
     # Save to interviews key
     return {"interview": interview}
@@ -319,6 +340,7 @@ There should be no redundant sources. It should simply be:
 
 def write_section(state: InterviewState):
     """Node to write a section"""
+    print(f"📝 Writing report section for {state['analyst']}")
 
     # Get state
     context = state["context"]
@@ -330,6 +352,8 @@ def write_section(state: InterviewState):
         [SystemMessage(content=system_message)]
         + [HumanMessage(content=f"Use this source to write your section: {context}")]
     )
+
+    print(f"  Created report section with {len(section.content)} characters")
 
     # Append it to state
     return {"sections": [section.content]}
@@ -359,10 +383,15 @@ interview_builder.add_edge("write_section", END)
 
 def initiate_all_interviews(state: ResearchGraphState):
     """Conditional edge to initiate all interviews via Send() API or return to create_analysts"""
+    print(f"🔄 Initiating interviews with {len(state.analysts)} analysts")
 
     # Check if human feedback
     # Otherwise kick off interviews in parallel via Send() API
     market = state.market
+
+    for analyst in state.analysts:
+        print(f"  - Interview scheduled for {analyst}")
+
     return [
         Send(
             "conduct_interview",
@@ -422,6 +451,7 @@ Output your recommendation as a structured object with:
 
 def write_recommendation(state: ResearchGraphState):
     """Node to write the recommendation"""
+    print(f"📊 Writing trade recommendation for market: {state.market.question}")
 
     # Full set of sections
     sections = state.sections
@@ -439,6 +469,8 @@ def write_recommendation(state: ResearchGraphState):
         [SystemMessage(content=system_message)]
         + [HumanMessage(content="Create a recommendation based upon these memos.")]
     )
+
+    print(f"  Recommendation: {recommendation}")
 
     # Return as a dict for state update
     return {"recommendation": recommendation}
@@ -506,6 +538,7 @@ def get_trader_instructions(
 
 def trade_configuration(state: TraderState):
     """Node to create the order details"""
+    print(f"💰 Configuring trade for market: {state.market.question}")
 
     market = state.market
     recommendation = state.recommendation
@@ -524,6 +557,8 @@ def trade_configuration(state: TraderState):
         ],
     )
 
+    print(f"  Order details: {order_details}")
+
     return {"order_details": order_details}
 
 
@@ -536,6 +571,7 @@ builder.add_node("check_balances", get_balances)
 builder.add_node("trade_configuration", trade_configuration)
 builder.add_node("trade_execution", trade_execution)
 # Logic
+
 builder.add_edge(START, "create_analysts")
 builder.add_conditional_edges(
     "create_analysts", initiate_all_interviews, ["conduct_interview"]
@@ -554,7 +590,7 @@ memory = SqliteSaver(conn)
 graph = builder.compile(checkpointer=memory)
 
 
-async def main():
+async def main_langgraph_studio():
     URL = "http://localhost:55147"
     client = get_client(url=URL)
 
@@ -571,16 +607,16 @@ async def main():
     print(run)
 
 
-def run_in_sdk(thread_id: str):
+def main():
+    thread_id = str(uuid.uuid4())
     config = {"configurable": {"thread_id": thread_id}}
-    markets = fetch_active_markets()[:5]
+    markets = fetch_active_markets()[:1]
     for market in markets:
         initial_state = GenerateAnalystsState(
             market=market, max_analysts=3, analysts=[]
         )
-        output = graph.invoke(initial_state.model_dump(), config)
-        print(output)
-        time.sleep(100)
+        graph.invoke(initial_state.model_dump(), config)
+        # time.sleep(100)
 
 
 def observe_state(thread_id: str):
@@ -590,7 +626,4 @@ def observe_state(thread_id: str):
 
 
 if __name__ == "__main__":
-    # asyncio.run(main())
-    thread_id = str(uuid.uuid4())
-    run_in_sdk(thread_id)
-    # observe_state(thread_id)
+    main()

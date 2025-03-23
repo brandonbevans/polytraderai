@@ -49,19 +49,35 @@ class PolymarketTrader:
 
 def _trade_execute(order_args: OrderArgs):
     trader = PolymarketTrader()
-
-    signed_order = trader.client.create_order(order_args)
-    resp = trader.client.post_order(signed_order, OrderType.GTC)
-    return resp
+    if os.getenv("TRADE_EXECUTION").lower() == "true":
+        signed_order = trader.client.create_order(order_args)
+        resp = trader.client.post_order(signed_order, OrderType.GTC)
+        return resp
+    else:
+        print("🚫 Trade execution disabled")
+        return {
+            "order_response": OrderResponse(
+                status="success", response={"message": "Trade execution disabled"}
+            )
+        }
 
 
 def trade_execution(state: TraderState):
     """Execute trades based on market analysis recommendation."""
+    print(f"🚀 Executing trade for market: {state.market.question}")
     try:
         # Create order arguments
         order_args: OrderArgs = state.order_details.order_args
+        print(
+            f"  Order: {order_args.side} {order_args.size} units at {order_args.price}"
+        )
 
         resp = _trade_execute(order_args)
+
+        status = "success"
+        if isinstance(resp, dict) and resp.get("status") == "failure":
+            status = "failure"
+        print(f"  Trade execution {status}")
 
         return {
             "order_response": OrderResponse(
@@ -71,6 +87,7 @@ def trade_execution(state: TraderState):
         }
     except Exception as e:
         logger.error(f"Trade execution failed: {str(e)}")
+        print(f"  ❌ Trade execution failed: {str(e)}")
         return {
             "order_response": OrderResponse(
                 status="failure", response={"failure": str(e)}
@@ -80,6 +97,7 @@ def trade_execution(state: TraderState):
 
 def get_balances(state: Balances):
     """Get the current USDC balance of the trader"""
+    print("💵 Checking account balances")
     # Get RPC URL from environment variable
     rpc_url = os.getenv("POLYGON_RPC_URL", "https://polygon-rpc.com")
     w3 = Web3(Web3.HTTPProvider(rpc_url))
@@ -107,5 +125,7 @@ def get_balances(state: Balances):
     balance = usdc_contract.functions.balanceOf(wallet_address).call()
     # USDC has 6 decimals
     balance_formatted = balance / 1e6
+
+    print(f"  USDC balance: ${balance_formatted:.2f}")
 
     return {"balances": {"USDC": balance_formatted}}

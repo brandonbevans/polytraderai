@@ -25,9 +25,9 @@ The boxed subgraph takes an "interviewer" role, in order to best tease informati
 
 1. Clone the repo.
 
-2. Create and activate a virtual environment (I'm using python 3.13):
+2. Create and activate a virtual environment:
 ```bash
-uv venv --python 3.13
+uv venv
 source .venv/bin/activate  # On Windows, use `.venv\Scripts\activate`
 ```
 
@@ -36,20 +36,7 @@ source .venv/bin/activate  # On Windows, use `.venv\Scripts\activate`
 uv sync
 ```
 
-4. Create a `.env` file with your configuration:
-```env
-MAX_BET_SIZE=10
-RISK_TOLERANCE=0.5
-
-SERPAPI_KEY=
-TAVILY_API_KEY=
-
-OPENAI_API_KEY=
-LANGCHAIN_API_KEY=
-LANGCHAIN_TRACING_V2=true
-POLYMARKET_PROXY_ADDRESS=
-POLYMARKET_PRIVATE_KEY=
-```
+4. Copy .env.example and fill in the variables 
 
 ## Project Structure
 

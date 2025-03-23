@@ -99,6 +99,9 @@ class Analyst(BaseModel):
     def persona(self) -> str:
         return f"Name: {self.name}\nRole: {self.role}\nAffiliation: {self.affiliation}\nDescription: {self.description}\n"
 
+    def __str__(self) -> str:
+        return f"{self.name} ({self.role}, {self.affiliation})"
+
 
 class Balances(BaseModel):
     balances: dict = Field(default={})
@@ -123,6 +126,11 @@ class Recommendation(BaseModel):
     reasoning: str = Field(
         description="Detailed reasoning for the recommendation", default=""
     )
+
+    def __str__(self) -> str:
+        return (
+            f"Outcome Index: {self.outcome_index} | Conviction: {self.conviction}/100"
+        )
 
     class Config:
         arbitrary_types_allowed = True
@@ -158,6 +166,10 @@ class SearchQuery(BaseModel):
 
 class OrderDetails(BaseModel):
     order_args: OrderArgs
+
+    def __str__(self) -> str:
+        args = self.order_args
+        return f"Order: {args.side} {args.size} units at {args.price} | Token: {args.token_id}"
 
 
 class TraderState(BaseModel):
