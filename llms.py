@@ -9,3 +9,8 @@ geminiflash = ChatGoogleGenerativeAI(
 )
 gpt4o = ChatOpenAI(model="gpt-4o", temperature=0)
 claude37 = ChatAnthropic(model="claude-3-7-sonnet-latest", temperature=0)
+claude37thinking = ChatAnthropic(
+    model="claude-3-7-sonnet-latest",
+    temperature=0,
+    thinking={"type": "enabled", "budget_tokens": 2000},
+)

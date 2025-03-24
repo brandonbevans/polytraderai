@@ -9,7 +9,7 @@ from langchain_core.messages import (
     HumanMessage,
     SystemMessage,
 )
-from llms import claude37
+from llms import claude37, claude37thinking
 
 
 def get_trader_instructions(
@@ -154,7 +154,7 @@ def write_recommendation(state: ResearchGraphState):
         market=market,
         context=formatted_str_sections,
     )
-    recommendation = claude37.with_structured_output(Recommendation).invoke(
+    recommendation = claude37thinking.with_structured_output(Recommendation).invoke(
         [SystemMessage(content=system_message)]
         + [HumanMessage(content="Create a recommendation based upon these memos.")]
     )

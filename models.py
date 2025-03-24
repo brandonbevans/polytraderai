@@ -143,10 +143,7 @@ class Recommendation(BaseModel):
 class Theme(BaseModel):
     theme: str
     confidence: float = Field(
-        description="Confidence score for the theme, between 0 and 1",
-        ge=0,
-        le=1,
-        default=0,
+        description="Confidence score for the theme, between 0 and 1"
     )
 
 

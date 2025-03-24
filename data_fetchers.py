@@ -26,7 +26,6 @@ def fetch_user_positions() -> set[str]:
     Returns:
         set: Set of condition_ids where user has positions
     """
-    market_analyzer_logger: logging.Logger = logging.getLogger("MarketAnalyzer")
     wallet_id = os.environ.get("POLYMARKET_PROXY_ADDRESS")
     url = f"https://data-api.polymarket.com/positions?sizeThreshold=.1&user={wallet_id}"
 
@@ -42,17 +41,54 @@ def fetch_user_positions() -> set[str]:
             if float(position.get("size", 0)) > 0.1  # Additional size check
         }
 
-        market_analyzer_logger.info(
-            f"Found {len(markets_with_positions)} markets with existing positions"
-        )
         return markets_with_positions
-
-    except requests.RequestException as e:
-        market_analyzer_logger.error(f"Error fetching user positions: {e}")
-        return set()
     except Exception as e:
-        market_analyzer_logger.error(f"Unexpected error fetching positions: {e}")
+        print(f"Error fetching user positions:  {e}")
         return set()
+
+
+def fetch_markets_with_positions() -> List[Market]:
+    """Fetch all markets where the user has an existing position."""
+    market_condition_ids_with_positions: set[str] = fetch_user_positions()
+    # Prepare query parameters
+    condition_ids_str = "&".join(
+        f"condition_ids={condition_id}"
+        for condition_id in market_condition_ids_with_positions
+    )
+
+    url: str = f"{Config.GAMMA_ENDPOINT}/markets?{condition_ids_str}"
+
+    try:
+        response: requests.Response = requests.get(url, timeout=REQUESTS_TIMEOUT)
+        response.raise_for_status()
+        markets_data = response.json()
+        return [
+            format_market_response_to_market(market_data)
+            for market_data in markets_data
+        ]
+    except Exception as e:
+        print(f"Error fetching markets with positions: {e}")
+        return []
+
+
+def format_market_response_to_market(market_data: Dict[str, Any]) -> Market:
+    # Pre-process the data
+    for field in ["outcomes", "outcomePrices", "clobTokenIds"]:
+        if isinstance(market_data.get(field), str):
+            try:
+                market_data[field] = json.loads(market_data[field])
+            except json.JSONDecodeError:
+                market_data[field] = (
+                    market_data[field].strip("[]").replace('"', "").split(",")
+                )
+
+    # Set default values for potentially missing fields
+    market_data.setdefault("fee", 0.0)
+    market_data.setdefault("image", "")
+    market_data.setdefault("icon", "")
+    market_data.setdefault("description", "")
+
+    return Market(**market_data)
 
 
 def fetch_active_markets() -> List[Market]:
@@ -61,7 +97,6 @@ def fetch_active_markets() -> List[Market]:
     market_analyzer_logger.debug("Fetching active markets")
 
     # Get markets with existing positions if wallet_id provided
-    markets_to_exclude = set()
     markets_to_exclude = fetch_user_positions()
     market_analyzer_logger.debug(
         f"Excluding {len(markets_to_exclude)} markets with existing positions"
@@ -107,26 +142,7 @@ def fetch_active_markets() -> List[Market]:
                     )
                     continue
 
-                # Pre-process the data
-                for field in ["outcomes", "outcomePrices", "clobTokenIds"]:
-                    if isinstance(market_data.get(field), str):
-                        try:
-                            market_data[field] = json.loads(market_data[field])
-                        except json.JSONDecodeError:
-                            market_data[field] = (
-                                market_data[field]
-                                .strip("[]")
-                                .replace('"', "")
-                                .split(",")
-                            )
-
-                # Set default values for potentially missing fields
-                market_data.setdefault("fee", 0.0)
-                market_data.setdefault("image", "")
-                market_data.setdefault("icon", "")
-                market_data.setdefault("description", "")
-
-                market = Market(**market_data)
+                market = format_market_response_to_market(market_data)
 
                 # Check if both Yes and No odds are between 0.20 and 0.80
                 yes_odds = market.outcome_prices[0] if market.outcome_prices else 0
