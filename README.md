@@ -1,5 +1,8 @@
 # Polymarket Trading Agent
 
+Currently in profit.
+Public profile here: https://polymarket.com/profile/0xdC8A2C33f07Ff317B6cA53C5b7318184B6Ac3009
+
 ## Overview
 
 An AI-agent for interacting with Polymarket's prediction markets.

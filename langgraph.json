@@ -1,10 +1,10 @@
 {
     "dockerfile_lines": [],
     "graphs": {
-        "research_agent": "./main.py:graph"
+        "research_agent": "./main_langgraph.py:graph"
     },
     "env": "./.env",
-    "python_version": "3.12",
+    "python_version": "3.13",
     "dependencies": [
         "."
     ]

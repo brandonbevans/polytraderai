@@ -3,7 +3,7 @@ from py_clob_client.client import ClobClient
 from py_clob_client.clob_types import OrderType, OrderArgs
 import os
 import logging
-from py_clob_client.constants import POLYGON, AMOY
+from py_clob_client.constants import POLYGON
 from dotenv import load_dotenv
 from web3 import Web3
 
@@ -15,36 +15,17 @@ class PolymarketTrader:
     def __init__(self):
         # Initialize CLOB client
 
-        # For Mumbai testnet
-        is_production = (
-            True  # os.getenv("ENVIRONMENT", "development").lower() == "production"
-        )
         key = os.getenv("POLYMARKET_PRIVATE_KEY")
-
-        if is_production:
-            host = "https://clob.polymarket.com"
-            chain_id = POLYGON
-            self.client = ClobClient(
-                host=host,
-                key=key,
-                chain_id=chain_id,
-                signature_type=1,
-                funder=os.getenv("POLYMARKET_PROXY_ADDRESS"),
-            )
-            self.client.set_api_creds(self.client.create_or_derive_api_creds())
-
-        else:
-            # Mumbai testnet setup
-            host = "https://clob.polymarket.com"
-            chain_id = AMOY
-            self.client = ClobClient(
-                host=host,
-                key=key,
-                chain_id=chain_id,
-                signature_type=1,
-                funder=os.getenv("POLYMARKET_PROXY_ADDRESS"),
-            )
-            self.client.set_api_creds(self.client.create_or_derive_api_creds())
+        host = "https://clob.polymarket.com"
+        chain_id = POLYGON
+        self.client = ClobClient(
+            host=host,
+            key=key,
+            chain_id=chain_id,
+            signature_type=1,
+            funder=os.getenv("POLYMARKET_PROXY_ADDRESS"),
+        )
+        self.client.set_api_creds(self.client.create_or_derive_api_creds())
 
 
 def _trade_execute(order_args: OrderArgs):
@@ -64,33 +45,45 @@ def _trade_execute(order_args: OrderArgs):
 
 def trade_execution(state: TraderState):
     """Execute trades based on market analysis recommendation."""
-    print(f"🚀 Executing trade for market: {state.market.question}")
-    try:
-        # Create order arguments
-        order_args: OrderArgs = state.order_details.order_args
+    if state.recommendation.conviction >= 75:
+        print(f"🚀 Executing trade for market: {state.market.question}")
+        try:
+            # Create order arguments
+            order_args: OrderArgs = state.order_details.order_args
+            print(
+                f"  Order: {order_args.side} {order_args.size} units at {order_args.price}"
+            )
+
+            resp = _trade_execute(order_args)
+
+            status = "success"
+            if isinstance(resp, dict) and resp.get("status") == "failure":
+                status = "failure"
+            print(f"  Trade execution {status}")
+            print("Final Recommendation:")
+            print(state.recommendation)
+            return {
+                "order_response": OrderResponse(
+                    status="success",
+                    response=resp,
+                )
+            }
+        except Exception as e:
+            logger.error(f"Trade execution failed: {str(e)}")
+            print(f"  ❌ Trade execution failed: {str(e)}")
+            return {
+                "order_response": OrderResponse(
+                    status="failure", response={"failure": str(e)}
+                )
+            }
+    else:
         print(
-            f"  Order: {order_args.side} {order_args.size} units at {order_args.price}"
+            f"🚫 Not executing trade due to low conviction - {state.recommendation.conviction}"
         )
 
-        resp = _trade_execute(order_args)
-
-        status = "success"
-        if isinstance(resp, dict) and resp.get("status") == "failure":
-            status = "failure"
-        print(f"  Trade execution {status}")
-
         return {
             "order_response": OrderResponse(
-                status="success",
-                response=resp,
-            )
-        }
-    except Exception as e:
-        logger.error(f"Trade execution failed: {str(e)}")
-        print(f"  ❌ Trade execution failed: {str(e)}")
-        return {
-            "order_response": OrderResponse(
-                status="failure", response={"failure": str(e)}
+                status="success", response={"message": "Low conviction"}
             )
         }
 

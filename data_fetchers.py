@@ -74,7 +74,7 @@ def fetch_active_markets() -> List[Market]:
 
     # Prepare query parameters
     params = {
-        "limit": 200,  # Adjust this number as needed
+        "limit": 50,  # Adjust this number as needed
         "offset": 0,
         "order": "volume",  # Sort by volume
         "ascending": False,  # Highest volume first
@@ -82,6 +82,7 @@ def fetch_active_markets() -> List[Market]:
         "closed": False,
         "liquidity_num_min": Config.MARKET_LIQUIDITY_THRESHOLD,
         "end_date_min": min_end_date.isoformat(),
+        "end_date_max": (min_end_date + timedelta(days=90)).isoformat(),
         "volume_num_min": Config.MARKET_VOLUME_THRESHOLD,  # Minimum volume, adjust as needed
     }
 

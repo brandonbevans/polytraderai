@@ -71,12 +71,16 @@ class Market(BaseModel):
         return v
 
     def __str__(self) -> str:
-        """String representation of the market including odds"""
         odds = {
             outcome: price for outcome, price in zip(self.outcomes, self.outcome_prices)
         }
         odds_str = "\n".join(f"{outcome}: {price}" for outcome, price in odds.items())
-        return f"Market: {self.question}\nOdds:\n{odds_str}"
+        return f"""Market Question: {self.question}
+                Description: {self.description}
+                Current Odds: {odds_str}
+                End Date: {self.end_date}
+                Volume: {self.volume}
+                """
 
     class Config:
         populate_by_name = True
@@ -136,12 +140,27 @@ class Recommendation(BaseModel):
         arbitrary_types_allowed = True
 
 
+class Theme(BaseModel):
+    theme: str
+    confidence: float = Field(
+        description="Confidence score for the theme, between 0 and 1",
+        ge=0,
+        le=1,
+        default=0,
+    )
+
+
+class AnalystThemes(BaseModel):
+    themes: List[Theme] = Field(default_factory=list)
+
+
 class GenerateAnalystsState(BaseModel):
     """State for generating analysts"""
 
     market: Market
     max_analysts: int
     analysts: List[Analyst] = Field(default_factory=list)  # Default empty list
+    analyst_themes: AnalystThemes = Field(default_factory=lambda: AnalystThemes())
 
     class Config:
         arbitrary_types_allowed = True  # Allow Market type
@@ -211,6 +230,7 @@ class ResearchGraphState(BaseModel):
             )
         )
     )
+    analyst_themes: AnalystThemes = Field(default_factory=lambda: AnalystThemes())
 
     class Config:
         arbitrary_types_allowed = True  # Allow Market type
