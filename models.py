@@ -154,8 +154,8 @@ class AnalystThemes(BaseModel):
 class GenerateAnalystsState(BaseModel):
     """State for generating analysts"""
 
+    topic: str = Field(default="")
     market: Market
-    max_analysts: int
     analysts: List[Analyst] = Field(default_factory=list)  # Default empty list
     analyst_themes: AnalystThemes = Field(default_factory=lambda: AnalystThemes())
 
@@ -210,10 +210,9 @@ class TraderState(BaseModel):
 class ResearchGraphState(BaseModel):
     """State for the overall research graph"""
 
+    topic: str
+    final_report: str
     market: Market
-    max_analysts: int
-    analysts: List[Analyst] = Field(default_factory=list)
-    sections: Annotated[List[str], operator.add] = Field(default_factory=list)
     recommendation: Recommendation = Field(
         default_factory=lambda: Recommendation(recommendation="", conviction=0)
     )

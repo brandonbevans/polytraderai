@@ -33,6 +33,32 @@ Search results:
 3. Return the list of themes in a list of strings."""
 
 
+generate_topic_instructions = """You are a very smart and experienced owner of a trading company. You trade markets based on deep research done by your extremely talented team.
+Your job is to generate a topic for a deep research report that will ultimately decide if we bet money on the outcome of the market.
+You'll be given a market. Distill the market into a single topic that will be used to generate a deep research report.
+
+Here is the market:
+{market}
+
+1. Analyze the market and identify the most relevant topics that will enable us to make an informed decision about the market.
+"""
+
+
+def generate_topic(state: GenerateAnalystsState):
+    """Generate a topic"""
+    print("🔍 Generating topic")
+
+    # Get state
+    market = state.market
+
+    # Generate topic
+    topic = gpt4o.invoke(
+        [SystemMessage(content=generate_topic_instructions.format(market=market))]
+    )
+
+    return {"topic": topic}
+
+
 def search_web_for_themes(state: GenerateAnalystsState):
     """Search web for relevant themes"""
     print("🔍 Searching web for relevant themes")

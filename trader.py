@@ -140,19 +140,12 @@ def write_recommendation(state: ResearchGraphState):
     print(f"📊 Writing trade recommendation for market: {state.market.question}")
 
     # Full set of sections
-    sections = state.sections
+    final_report = state.final_report
     market = state.market
 
-    # Concat all sections together
-    formatted_str_sections = "\n\n".join([f"{section}" for section in sections])
-    print("--------------------------------")
-    print("Final document:")
-    print(formatted_str_sections)
-    print("--------------------------------")
-    # Get recommendation using structured output
     system_message = recommendation_instructions.format(
         market=market,
-        context=formatted_str_sections,
+        context=final_report,
     )
     recommendation = claude37thinking.with_structured_output(Recommendation).invoke(
         [SystemMessage(content=system_message)]

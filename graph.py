@@ -1,12 +1,11 @@
 from analysts import (
+    generate_topic,
     generate_question,
     generate_answer,
     save_interview,
     route_messages,
     search_web,
     write_section,
-    start_interviews_or_create_better_analysts,
-    search_web_for_themes,
 )
 from trader import (
     write_recommendation,
@@ -21,11 +20,10 @@ from models import (
 from trade_tools import get_balances, trade_execution
 
 import sqlite3
-from analysts import (
-    create_analysts,
-)
 
 from langgraph.checkpoint.sqlite import SqliteSaver
+
+from open_deep_research.graph import graph as deep_research_graph
 
 
 def get_interview_graph():
@@ -50,23 +48,16 @@ def get_interview_graph():
 def get_full_graph():
     # Add nodes and edges
     builder = StateGraph(ResearchGraphState)
-    builder.add_node("create_analysts", create_analysts)
-    builder.add_node("search_web_for_themes", search_web_for_themes)
-    builder.add_node("conduct_interview", get_interview_graph())
+    builder.add_node("generate_topic", generate_topic)
+    builder.add_node("deep_research", deep_research_graph)
     builder.add_node("write_recommendation", write_recommendation)
     builder.add_node("check_balances", get_balances)
     builder.add_node("trade_configuration", trade_configuration)
     builder.add_node("trade_execution", trade_execution)
 
-    builder.add_edge(START, "create_analysts")
-    # builder.add_edge("search_web_for_themes", "conduct_interview")
-    builder.add_conditional_edges(
-        "create_analysts",
-        start_interviews_or_create_better_analysts,
-        ["conduct_interview", "search_web_for_themes"],
-    )
-    builder.add_edge("search_web_for_themes", "create_analysts")
-    builder.add_edge("conduct_interview", "write_recommendation")
+    builder.add_edge(START, "generate_topic")
+    builder.add_edge("generate_topic", "deep_research")
+    builder.add_edge("deep_research", "write_recommendation")
     builder.add_edge("write_recommendation", "check_balances")
     builder.add_edge("check_balances", "trade_configuration")
     builder.add_edge("trade_configuration", "trade_execution")

@@ -17,14 +17,23 @@ def manage_positions():
 
 def main():
     thread_id = str(uuid.uuid4())
-    config = {"configurable": {"thread_id": thread_id}}
+    thread = {
+        "configurable": {
+            "thread_id": thread_id,
+            "search_api": "tavily",
+            "planner_provider": "anthropic",
+            "planner_model": "claude-3-7-sonnet-latest",
+            "writer_provider": "openai",
+            "writer_model": "gpt-4o",
+            "max_search_depth": 1,
+        }
+    }
     graph = get_full_graph()
-
     markets = fetch_active_markets()[:30]
     for market in markets:
         initial_state = GenerateAnalystsState(market=market, max_analysts=3)
-        graph.invoke(initial_state.model_dump(), config)
-        time.sleep(10)
+        graph.invoke(initial_state.model_dump(), config=thread)
+        time.sleep(30)
 
 
 if __name__ == "__main__":
