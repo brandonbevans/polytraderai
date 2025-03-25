@@ -8,14 +8,18 @@ Public profile here: https://polymarket.com/profile/0xdC8A2C33f07Ff317B6cA53C5b7
 An AI-agent for interacting with Polymarket's prediction markets.
 The agent reviews open prediction markets, goes through various research processes, and makes trades based on the results.
 
-The quality of the trading decisions are a direct function of the quality of the research done in the conduct_interview subgraph, and the agents self-awareness to know which markets it could have an edge in.
+## Roadmap
 
-This project as it is is a PoC and not extremely intelligent, but the framework is there to add more and more intelligence as needed from different sources (i.e Reddit, Youtube, Google Trends, and anything else thats relevant to a given prediction market).
+### TradeManager
+- Manage open positions.
 
+### Real-time Trader
+- Connect real-time news feeds like RSS to trigger an agent run.
+- Anticipate the effect of news on a market and buy/sell accordingly.
 
 ## LangGraph
 
-One intention of this project was to get experience with LangGraph, LangChain, and the various tools that LangGraph has to offer.
+One intention of this project was to gain experience with LangGraph, LangChain, and the various tools that LangGraph has to offer.
 
 Below is the graph visualization of the agent's workflow:
 
