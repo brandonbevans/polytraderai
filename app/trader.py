@@ -9,7 +9,7 @@ from langchain_core.messages import (
     HumanMessage,
     SystemMessage,
 )
-from llms import claude37, claude37thinking
+from app.llms import claude37, claude37thinking
 
 
 def get_trader_instructions(

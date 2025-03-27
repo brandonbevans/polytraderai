@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field, field_validator
-from typing import List, Union
+from typing import List, Union, Optional
 from datetime import datetime
 import json
 from langgraph.graph import MessagesState
@@ -230,3 +230,22 @@ class ResearchGraphState(BaseModel):
 
     class Config:
         arbitrary_types_allowed = True  # Allow Market type
+
+
+# --- for news ---
+
+
+class Article(BaseModel):
+    title: str
+    url: str
+    published: Optional[str] = None
+    summary: Optional[str] = None
+    published_parsed: Optional[datetime] = None
+
+    def __str__(self) -> str:
+        return f"Title: {self.title}\nURL: {self.url}\nPublished: {self.published}\nSummary: {self.summary}"
+
+
+class ArticleMarketMatch(BaseModel):
+    article_titles: list[str]
+    market_question: str

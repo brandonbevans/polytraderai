@@ -2,9 +2,9 @@ from typing import Dict, Any, Optional, List
 from datetime import datetime, timedelta
 import requests
 import logging
-from config import Config
+from app.config import Config
 from pytrends.request import TrendReq
-from models import Market
+from app.models import Market
 import pytz
 from pydantic import ValidationError
 import json
@@ -109,7 +109,7 @@ def fetch_active_markets() -> List[Market]:
 
     # Prepare query parameters
     params = {
-        "limit": 50,  # Adjust this number as needed
+        "limit": 300,  # Adjust this number as needed
         "offset": 0,
         "order": "volume",  # Sort by volume
         "ascending": False,  # Highest volume first

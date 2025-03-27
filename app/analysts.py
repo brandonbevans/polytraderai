@@ -6,7 +6,7 @@ from models import (
     ResearchGraphState,
     AnalystThemes,
 )
-from llms import gpt4o
+from app.llms import gpt4o
 from langchain_core.messages import (
     AIMessage,
     HumanMessage,
