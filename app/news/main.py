@@ -6,7 +6,7 @@ from typing import List
 import uvicorn
 
 from app.data_fetchers import fetch_active_markets
-from app.models import Market, Article, ArticleMarketMatches
+from app.models import Market, Article, ArticleMarketMatches, ArticleMarketMatchFull
 from app.llms import geminiflash
 
 app = FastAPI(title="Simple RSS Feed Endpoint")
@@ -74,8 +74,7 @@ Here are the articles:
 """
 
 
-@app.get("/webhook")
-async def webhook_trigger():
+async def get_relevant_articles() -> List[ArticleMarketMatchFull]:
     markets: List[Market] = fetch_active_markets()
     articles: list[Article] = await get_recent_articles()
 
@@ -87,17 +86,32 @@ async def webhook_trigger():
     match_market_response: ArticleMarketMatches = geminiflash.with_structured_output(
         ArticleMarketMatches
     ).invoke(match_market_instructions)
-    if match_market_response.article_market_matches:
-        for market_match in match_market_response.article_market_matches:
-            if len(market_match.article_titles) > 0:
-                print(market_match)
-            print("-" * 100)
+    article_market_match_fulls: list[ArticleMarketMatchFull] = []
+    for market_match in match_market_response.article_market_matches:
+        matching_market = next(
+            (m for m in markets if m.question == market_match.market_question),
+            None,
+        )
+        if matching_market is not None:  # Only create if we found a matching market
+            article_market_match_fulls.append(
+                ArticleMarketMatchFull(
+                    articles=[
+                        a for a in articles if a.title in market_match.article_titles
+                    ],
+                    market=matching_market,
+                )
+            )
 
-    # In a real implementation, you might do something like:
-    # for article in articles:
-    #     asyncio.create_task(send_to_langgraph(market, articles))
+    return article_market_match_fulls
 
-    return {"status": "success", "articles_found": len(articles)}
+
+@app.get("/get_relevant_articles")
+async def get_relevant_articles_call():
+    market_article_matches: List[ArticleMarketMatchFull] = await get_relevant_articles()
+    return {
+        "status": "success",
+        "market_article_matches": [m.model_dump() for m in market_article_matches],
+    }
 
 
 if __name__ == "__main__":

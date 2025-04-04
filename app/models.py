@@ -253,3 +253,8 @@ class ArticleMarketMatch(BaseModel):
 
 class ArticleMarketMatches(BaseModel):
     article_market_matches: list[ArticleMarketMatch]
+
+
+class ArticleMarketMatchFull(BaseModel):
+    articles: list[Article]
+    market: Market
