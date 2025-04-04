@@ -1,4 +1,4 @@
-from analysts import (
+from app.analysts import (
     generate_topic,
     generate_question,
     generate_answer,
@@ -7,17 +7,19 @@ from analysts import (
     search_web,
     write_section,
 )
-from trader import (
+from app.trader import (
     write_recommendation,
     trade_configuration,
+    write_recommendation_from_news,
 )
 
 from langgraph.graph import END, START, StateGraph
-from models import (
+from app.models import (
     InterviewState,
     ResearchGraphState,
+    RecentNewsResearchMarketState,
 )
-from trade_tools import get_balances, trade_execution
+from app.trade_tools import get_balances, trade_execution
 
 import sqlite3
 
@@ -59,6 +61,28 @@ def get_full_graph():
     builder.add_edge("generate_topic", "deep_research")
     builder.add_edge("deep_research", "write_recommendation")
     builder.add_edge("write_recommendation", "check_balances")
+    builder.add_edge("check_balances", "trade_configuration")
+    builder.add_edge("trade_configuration", "trade_execution")
+    builder.add_edge("trade_execution", END)
+
+    db_path = "state_db/example.db"
+    conn = sqlite3.connect(db_path, check_same_thread=False)
+
+    memory = SqliteSaver(conn)
+    # Compile
+    graph = builder.compile(checkpointer=memory)
+    return graph
+
+
+def get_news_graph():
+    builder = StateGraph(RecentNewsResearchMarketState)
+    builder.add_node("write_recommendation_from_news", write_recommendation_from_news)
+    builder.add_node("check_balances", get_balances)
+    builder.add_node("trade_configuration", trade_configuration)
+    builder.add_node("trade_execution", trade_execution)
+
+    builder.add_edge(START, "write_recommendation_from_news")
+    builder.add_edge("write_recommendation_from_news", "check_balances")
     builder.add_edge("check_balances", "trade_configuration")
     builder.add_edge("trade_configuration", "trade_execution")
     builder.add_edge("trade_execution", END)

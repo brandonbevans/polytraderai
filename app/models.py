@@ -132,9 +132,7 @@ class Recommendation(BaseModel):
     )
 
     def __str__(self) -> str:
-        return (
-            f"Outcome Index: {self.outcome_index} | Conviction: {self.conviction}/100"
-        )
+        return f"Outcome Index: {self.outcome_index} | Conviction: {self.conviction}/100 - Reasoning: {self.reasoning}"
 
     class Config:
         arbitrary_types_allowed = True
@@ -258,3 +256,19 @@ class ArticleMarketMatches(BaseModel):
 class ArticleMarketMatchFull(BaseModel):
     articles: list[Article]
     market: Market
+
+
+class RecentNewsResearchMarketState(BaseModel):
+    market: Market
+    articles: list[Article]
+    recommendation: Recommendation = Field(
+        default_factory=lambda: Recommendation(recommendation="", conviction=0)
+    )
+    balances: dict = Field(default={})
+    order_details: OrderDetails = Field(
+        default=OrderDetails(
+            order_args=OrderArgs(  # nosec
+                price=0.0, size=0.0001, side="buy", token_id=""
+            )
+        )
+    )

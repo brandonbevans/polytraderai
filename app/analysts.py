@@ -1,4 +1,4 @@
-from models import (
+from app.models import (
     Perspectives,
     GenerateAnalystsState,
     InterviewState,

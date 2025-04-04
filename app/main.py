@@ -1,11 +1,15 @@
 from typing import List
 import uuid
-from data_fetchers import fetch_active_markets, fetch_markets_with_positions
-from models import (
+import asyncio
+from app.models import ArticleMarketMatchFull
+from app.news.main import get_relevant_articles
+from app.data_fetchers import fetch_active_markets, fetch_markets_with_positions
+from app.models import (
     GenerateAnalystsState,
     Market,
+    RecentNewsResearchMarketState,
 )
-from graph import get_full_graph
+from app.graph import get_full_graph, get_news_graph
 import time
 
 
@@ -36,5 +40,31 @@ def main():
         time.sleep(30)
 
 
+async def main_news():
+    thread_id = str(uuid.uuid4())
+    thread = {
+        "configurable": {
+            "thread_id": thread_id,
+            "search_api": "tavily",
+            "planner_provider": "anthropic",
+            "planner_model": "claude-3-7-sonnet-latest",
+            "writer_provider": "openai",
+            "writer_model": "gpt-4o",
+            "max_search_depth": 1,
+        }
+    }
+    graph = get_news_graph()
+    market_with_articles_list: List[
+        ArticleMarketMatchFull
+    ] = await get_relevant_articles()
+    for market_with_articles in market_with_articles_list:
+        initial_state = RecentNewsResearchMarketState(
+            market=market_with_articles.market,
+            articles=market_with_articles.articles,
+        )
+        graph.invoke(initial_state.model_dump(), config=thread)
+        time.sleep(5)
+
+
 if __name__ == "__main__":
-    main()
+    asyncio.run(main_news())

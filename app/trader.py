@@ -1,15 +1,19 @@
-from models import (
+from typing import List
+from langchain_core.documents.base import Document
+from app.models import (
     ResearchGraphState,
     Market,
     Recommendation,
     TraderState,
     OrderDetails,
+    RecentNewsResearchMarketState,
 )
 from langchain_core.messages import (
     HumanMessage,
     SystemMessage,
 )
-from app.llms import claude37, claude37thinking
+from app.llms import claude37thinking, geminiflash
+from langchain_community.document_loaders import SeleniumURLLoader
 
 
 def get_trader_instructions(
@@ -80,7 +84,7 @@ def trade_configuration(state: TraderState):
     recommendation.outcome_index = int(recommendation.outcome_index)
     instructions = get_trader_instructions(market, recommendation, balances)
 
-    llm_trader = claude37.with_structured_output(OrderDetails)
+    llm_trader = geminiflash.with_structured_output(OrderDetails)
     order_details = llm_trader.invoke(
         [SystemMessage(content=instructions)]
         + [
@@ -90,7 +94,7 @@ def trade_configuration(state: TraderState):
         ],
     )
 
-    print(f"  Order details: {order_details}")
+    print(f"Order details: {order_details}")
 
     return {"order_details": order_details}
 
@@ -155,4 +159,75 @@ def write_recommendation(state: ResearchGraphState):
     print(f"  Recommendation: {recommendation}")
 
     # Return as a dict for state update
+    return {"recommendation": recommendation}
+
+
+news_recommendation_instructions = """You are a market analyst creating a recommendation for a prediction market.
+
+MARKET DETAILS:
+Question: {market.question}
+Description: {market.description}
+Outcomes: {market.outcomes}
+Current Odds: 
+- {market.outcomes[0]}: {market.outcome_prices[0]:.2%}
+- {market.outcomes[1]}: {market.outcome_prices[1]:.2%}
+End Date: {market.end_date}
+Volume: {market.volume}
+
+Your task is to analyze the research provided and make a recommendation on which outcome to BUY.
+Note: You can only BUY one of the two outcomes - you cannot SELL as we don't have any existing positions.
+
+Based on the provided EXTREMELY RECENT articles, who's full content is as follows:
+{context}
+------------
+Here are a few important details:
+- The above context is EXTREMELY RECENT and may or may not have an immediate impact on this market that hasn't been reflected in the current market odds.
+- Often times the article is related but will not have an immediate impact on the market, if that's the case you should NOT make a recommendation to trade.
+- The whole point of these articles is to find opportunities that have not yet been reflected in the market odds from recent news, so we ONLY want to make a recommendation to BUY if the article is VERY LIKELY to have an immediate impact on the market.
+- If you determine that the article is not likely to have an immediate impact on the market, you should not make a recommendation to trade.
+
+Create a recommendation that includes:
+1. Which outcome to BUY (must be one of: {market.outcomes})
+2. Your conviction level (0-100) in this recommendation
+3. Detailed reasoning explaining:
+   - Why you chose this outcome
+   - Why the current market odds are incorrect
+   - Key evidence supporting your view
+   - Potential risks to your thesis
+
+Remember:
+- You can only recommend BUYING one of the two outcomes
+- Higher conviction (>70) should only be used when evidence strongly suggests market odds are wrong
+- Lower conviction (<30) suggests staying out of the market
+- Consider time until market resolution and potential catalysts
+
+Output your recommendation as a structured object with:
+- outcome_index: 0 for {market.outcomes[0]}, 1 for {market.outcomes[1]}
+- conviction: 0-100 score
+- reasoning: Detailed explanation of your recommendation
+"""
+
+
+def write_recommendation_from_news(state: RecentNewsResearchMarketState):
+    """Node to write the recommendation"""
+    print(f"📊 Writing trade recommendation for market: {state.market.question}")
+
+    urls = [a.url for a in state.articles]
+    print("URLs: ", urls)
+    loader = SeleniumURLLoader(urls=urls)
+    data: List[Document] = loader.load()
+    print("Data: ", data)
+    content = "------------------\n".join([d.page_content for d in data])
+    print("Content: ", content)
+    system_message = news_recommendation_instructions.format(
+        market=state.market,
+        context=content,
+    )
+    recommendation = geminiflash.with_structured_output(Recommendation).invoke(
+        [SystemMessage(content=system_message)]
+        + [HumanMessage(content="Create a recommendation.")]
+    )
+
+    print(f"  Recommendation: {recommendation}")
+
     return {"recommendation": recommendation}

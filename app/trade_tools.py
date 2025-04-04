@@ -1,4 +1,4 @@
-from models import Balances, OrderResponse, TraderState
+from app.models import Balances, OrderResponse, TraderState
 from py_clob_client.client import ClobClient
 from py_clob_client.clob_types import OrderType, OrderArgs
 import os

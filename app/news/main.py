@@ -8,6 +8,7 @@ import uvicorn
 from app.data_fetchers import fetch_active_markets
 from app.models import Market, Article, ArticleMarketMatches, ArticleMarketMatchFull
 from app.llms import geminiflash
+from app.utils import get_decoded_urls
 
 app = FastAPI(title="Simple RSS Feed Endpoint")
 
@@ -54,6 +55,11 @@ async def get_recent_articles(lookback_time: int = 60) -> list[Article]:
             )
             recent_articles.append(article)
 
+    # Decode the URLs
+    decoded_urls = get_decoded_urls([a.url for a in recent_articles])
+    for article, decoded_url in zip(recent_articles, decoded_urls):
+        article.url = decoded_url
+
     print(
         f"Found {len(recent_articles)} articles from the last {lookback_time} minutes"
     )
@@ -74,9 +80,10 @@ Here are the articles:
 """
 
 
-async def get_relevant_articles() -> List[ArticleMarketMatchFull]:
+@app.get("/get_relevant_articles", response_model=List[ArticleMarketMatchFull])
+async def get_relevant_articles() -> list | list[ArticleMarketMatchFull]:
     markets: List[Market] = fetch_active_markets()
-    articles: list[Article] = await get_recent_articles()
+    articles: list[Article] = await get_recent_articles(15)
 
     match_market_instructions = MATCH_MARKETS_INSTRUCTIONS.format(
         markets=[str(market) for market in markets],
@@ -86,6 +93,13 @@ async def get_relevant_articles() -> List[ArticleMarketMatchFull]:
     match_market_response: ArticleMarketMatches = geminiflash.with_structured_output(
         ArticleMarketMatches
     ).invoke(match_market_instructions)
+
+    if match_market_response is None or not hasattr(
+        match_market_response, "article_market_matches"
+    ):
+        print("No valid market matches found from LLM response")
+        return []
+
     article_market_match_fulls: list[ArticleMarketMatchFull] = []
     for market_match in match_market_response.article_market_matches:
         matching_market = next(
@@ -101,17 +115,7 @@ async def get_relevant_articles() -> List[ArticleMarketMatchFull]:
                     market=matching_market,
                 )
             )
-
     return article_market_match_fulls
-
-
-@app.get("/get_relevant_articles")
-async def get_relevant_articles_call():
-    market_article_matches: List[ArticleMarketMatchFull] = await get_relevant_articles()
-    return {
-        "status": "success",
-        "market_article_matches": [m.model_dump() for m in market_article_matches],
-    }
 
 
 if __name__ == "__main__":

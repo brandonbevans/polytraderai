@@ -3,13 +3,15 @@ import uuid
 from langgraph.graph.state import CompiledStateGraph
 from langgraph_sdk import get_client
 from langgraph_sdk.client import LangGraphClient
-from data_fetchers import fetch_active_markets
+from app.news.main import get_relevant_articles
+from app.data_fetchers import fetch_active_markets
 from langgraph_sdk.schema import Thread
 
-from models import (
+from app.models import (
     GenerateAnalystsState,
+    RecentNewsResearchMarketState,
 )
-from graph import get_full_graph
+from app.graph import get_full_graph
 
 URL = "http://localhost:2024"
 graph: CompiledStateGraph = get_full_graph()
@@ -44,6 +46,28 @@ async def main():
     observe_state(thread_id)
 
 
+async def news_agent():
+    client: LangGraphClient = get_client(url=URL)
+    thread_id = str(uuid.uuid4())
+    thread: Thread = await client.threads.create(thread_id=thread_id)
+    thread = {"configurable": {"thread_id": thread_id, "search_api": "tavily"}}
+
+    article_market_match_fulls = await get_relevant_articles()
+    initial_state = RecentNewsResearchMarketState(
+        market=article_market_match_fulls[0].market,
+        articles=article_market_match_fulls[0].articles,
+    )
+
+    run = await client.runs.create(
+        thread_id=thread_id,
+        assistant_id="news_agent",
+        input=initial_state.model_dump(),
+        config=thread,
+    )
+    print(run)
+    observe_state(thread_id)
+
+
 def observe_state(thread_id: str):
     config = {"configurable": {"thread_id": thread_id}}
     state = graph.get_state(config=config)
@@ -51,4 +75,4 @@ def observe_state(thread_id: str):
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    asyncio.run(news_agent())
