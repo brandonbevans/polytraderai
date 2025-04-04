@@ -249,3 +249,7 @@ class Article(BaseModel):
 class ArticleMarketMatch(BaseModel):
     article_titles: list[str]
     market_question: str
+
+
+class ArticleMarketMatches(BaseModel):
+    article_market_matches: list[ArticleMarketMatch]

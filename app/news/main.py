@@ -6,9 +6,8 @@ from typing import List
 import uvicorn
 
 from app.data_fetchers import fetch_active_markets
-from app.models import Market, Article, ArticleMarketMatch
+from app.models import Market, Article, ArticleMarketMatches
 from app.llms import geminiflash
-
 
 app = FastAPI(title="Simple RSS Feed Endpoint")
 
@@ -19,7 +18,7 @@ RSS_FEEDS = [
 
 
 @app.get("/get_articles", response_model=List[Article])
-async def get_recent_articles(lookback_time: int = 15) -> list[Article]:
+async def get_recent_articles(lookback_time: int = 60) -> list[Article]:
     """
     Get articles from the first RSS feed published in the last specified time
     """
@@ -64,12 +63,12 @@ async def get_recent_articles(lookback_time: int = 15) -> list[Article]:
 MATCH_MARKETS_INSTRUCTIONS = """
 You are a market analyst. You are given a list of articles and a list of markets.
 You need to match the articles to the markets. A match consists of an a market and any number of articles.
-Don't include any articles that don't match the market. It's okay to not match any articles to a market, in fact in most cases that's expected.
-You should baiscally base the match on the semantic meaning of the title and the semantic meaning of the market question.
-Here are the market questions:
+Don't include any articles that don't match the market. It's okay to not match any articles to a market, be strict about it.
+A 'match' is when the article can directly help answer the question posed by the market.
+Here are the markets:
 {markets}
 
-Here are the article titles:
+Here are the articles:
 {articles}
 
 """
@@ -77,23 +76,22 @@ Here are the article titles:
 
 @app.get("/webhook")
 async def webhook_trigger():
-    """
-    A simple webhook endpoint that fetches recent articles and
-    could trigger your LangGraph agent (simplified for demonstration)
-    """
     markets: List[Market] = fetch_active_markets()
     articles: list[Article] = await get_recent_articles()
 
     match_market_instructions = MATCH_MARKETS_INSTRUCTIONS.format(
-        markets=[market.question for market in markets],
-        articles=[article.title for article in articles],
+        markets=[str(market) for market in markets],
+        articles=[str(article) for article in articles],
     )
 
-    match_market_response = geminiflash.with_structured_output(
-        ArticleMarketMatch
+    match_market_response: ArticleMarketMatches = geminiflash.with_structured_output(
+        ArticleMarketMatches
     ).invoke(match_market_instructions)
-
-    print(match_market_response)
+    if match_market_response.article_market_matches:
+        for market_match in match_market_response.article_market_matches:
+            if len(market_match.article_titles) > 0:
+                print(market_match)
+            print("-" * 100)
 
     # In a real implementation, you might do something like:
     # for article in articles:
